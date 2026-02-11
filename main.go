@@ -430,6 +430,38 @@ func (a *App) GetTextTypes() []struct {
 	return result
 }
 
+// GetAllCustomPrompts returns all custom prompts from config
+func (a *App) GetAllCustomPrompts() map[string]map[string]string {
+	return a.config.GetAllCustomPrompts()
+}
+
+// SetCustomPrompt sets a custom prompt for a specific style and text type
+// Returns error if validation fails
+func (a *App) SetCustomPrompt(style, textType, prompt string) error {
+	if err := a.config.SetCustomPrompt(style, textType, prompt); err != nil {
+		return err
+	}
+	return a.config.Save()
+}
+
+// DeleteCustomPrompt removes a custom prompt for a specific style and text type
+func (a *App) DeleteCustomPrompt(style, textType string) error {
+	a.config.DeleteCustomPrompt(style, textType)
+	return a.config.Save()
+}
+
+// ResetAllCustomPrompts removes all custom prompts
+func (a *App) ResetAllCustomPrompts() error {
+	a.config.CustomPrompts = make(map[string]map[string]string)
+	return a.config.Save()
+}
+
+// GetDefaultPrompt returns the default prompt for a style and text type
+func (a *App) GetDefaultPrompt(style, textType string) string {
+	defaultConfig := config.DefaultConfig()
+	return defaultConfig.GetPrompt(style, textType)
+}
+
 // RetryRewriteWithTextType generates a rewrite with specific text type
 func (a *App) RetryRewriteWithTextType(text, style, textType string, enableFormatting bool) rewriter.RewriteOption {
 	option, _ := a.rewriter.GenerateRewriteWithTextType(a.ctx, text, style, rewriter.TextType(textType), enableFormatting)

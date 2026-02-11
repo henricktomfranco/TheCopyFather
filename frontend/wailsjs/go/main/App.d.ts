@@ -7,13 +7,19 @@ export function ApplyRewrite(arg1:string):Promise<void>;
 
 export function ApplyRewriteAndPaste(arg1:string):Promise<void>;
 
+export function DeleteCustomPrompt(arg1:string,arg2:string):Promise<void>;
+
 export function DetectTextType(arg1:string):Promise<any>;
+
+export function GetAllCustomPrompts():Promise<Record<string, Record<string, string>>>;
 
 export function GetAnalysisStyles():Promise<Array<string>>;
 
 export function GetAvailableModels():Promise<Array<string>>;
 
 export function GetCursorPosition():Promise<Record<string, number>>;
+
+export function GetDefaultPrompt(arg1:string,arg2:string):Promise<string>;
 
 export function GetRewriteStyles():Promise<Array<string>>;
 
@@ -24,6 +30,8 @@ export function GetStyleInfo(arg1:string):Promise<any|boolean>;
 export function GetTextTypes():Promise<Array<any>>;
 
 export function Quit():Promise<void>;
+
+export function ResetAllCustomPrompts():Promise<void>;
 
 export function RetryAnalysis(arg1:string,arg2:string):Promise<rewriter.RewriteOption>;
 
@@ -38,5 +46,7 @@ export function RetryRewriteWithFormatting(arg1:string,arg2:string,arg3:boolean)
 export function RetryRewriteWithTextType(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<rewriter.RewriteOption>;
 
 export function SaveSettings(arg1:config.Config):Promise<void>;
+
+export function SetCustomPrompt(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function TestConnection(arg1:string,arg2:string,arg3:string):Promise<string>;

@@ -24,6 +24,20 @@ export interface Config {
   first_run: boolean
   auto_paste_mode?: string
   popup_position_mode?: string
+  custom_prompts?: Record<string, Record<string, string>>
+}
+
+export interface TextTypeInfo {
+  type: string
+  label: string
+  icon: string
+  description: string
+}
+
+export interface StyleInfo {
+  label: string
+  icon: string
+  description: string
 }
 
 function App() {
@@ -79,17 +93,95 @@ function App() {
     }
   }
 
-  const handleSaveSettings = async (newSettings: Config) => {
+const handleSaveSettings = async (newSettings: Config) => {
     try {
       // @ts-ignore
       await window.go.main.App.SaveSettings(newSettings)
       setSettings(newSettings)
-      // Just keep current view or return to popup if text was selected
       if (selectedText) {
         setCurrentView('popup')
       }
     } catch (error) {
       console.error('Failed to save settings:', error)
+    }
+  }
+
+  const loadCustomPrompts = async (): Promise<Record<string, Record<string, string>>> => {
+    try {
+      // @ts-ignore
+      const prompts = await window.go.main.App.GetAllCustomPrompts()
+      return prompts || {}
+    } catch (error) {
+      console.error('Failed to load custom prompts:', error)
+      return {}
+    }
+  }
+
+  const saveCustomPrompt = async (style: string, textType: string, prompt: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // @ts-ignore
+      await window.go.main.App.SetCustomPrompt(style, textType, prompt)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save custom prompt'
+      console.error('Failed to save custom prompt:', error)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  const deleteCustomPrompt = async (style: string, textType: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // @ts-ignore
+      await window.go.main.App.DeleteCustomPrompt(style, textType)
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to delete custom prompt'
+      console.error('Failed to delete custom prompt:', error)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  const getDefaultPrompt = async (style: string, textType: string): Promise<string> => {
+    try {
+      // @ts-ignore
+      const prompt = await window.go.main.App.GetDefaultPrompt(style, textType)
+      return prompt
+    } catch (error) {
+      console.error('Failed to get default prompt:', error)
+      return ''
+    }
+  }
+
+  const loadRewriteStyles = async (): Promise<string[]> => {
+    try {
+      // @ts-ignore
+      const styles = await window.go.main.App.GetRewriteStyles()
+      return styles || []
+    } catch (error) {
+      console.error('Failed to load rewrite styles:', error)
+      return []
+    }
+  }
+
+  const loadAnalysisStyles = async (): Promise<string[]> => {
+    try {
+      // @ts-ignore
+      const styles = await window.go.main.App.GetAnalysisStyles()
+      return styles || []
+    } catch (error) {
+      console.error('Failed to load analysis styles:', error)
+      return []
+    }
+  }
+
+  const loadTextTypes = async (): Promise<TextTypeInfo[]> => {
+    try {
+      // @ts-ignore
+      const types = await window.go.main.App.GetTextTypes()
+      return types || []
+    } catch (error) {
+      console.error('Failed to load text types:', error)
+      return []
     }
   }
 
@@ -136,6 +228,13 @@ function App() {
               handleClose()
             }
           }}
+          onLoadCustomPrompts={loadCustomPrompts}
+          onSaveCustomPrompt={saveCustomPrompt}
+          onDeleteCustomPrompt={deleteCustomPrompt}
+          onGetDefaultPrompt={getDefaultPrompt}
+          onLoadRewriteStyles={loadRewriteStyles}
+          onLoadAnalysisStyles={loadAnalysisStyles}
+          onLoadTextTypes={loadTextTypes}
         />
       )}
     </div>

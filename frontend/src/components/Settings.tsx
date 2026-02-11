@@ -1,16 +1,45 @@
 import { useState, useEffect } from 'react'
-import { Config } from '../App'
+import { Config, TextTypeInfo } from '../App'
 import * as runtime from '../../wailsjs/runtime'
 import '../styles/Settings.css'
 import logoImage from '../assets/logo.jpg'
+
+interface OperationResult {
+  success: boolean
+  error?: string
+}
 
 interface SettingsProps {
   settings: Config
   onSave: (settings: Config) => void
   onCancel: () => void
+  onLoadCustomPrompts: () => Promise<Record<string, Record<string, string>>>
+  onSaveCustomPrompt: (style: string, textType: string, prompt: string) => Promise<OperationResult>
+  onDeleteCustomPrompt: (style: string, textType: string) => Promise<OperationResult>
+  onGetDefaultPrompt: (style: string, textType: string) => Promise<string>
+  onLoadRewriteStyles: () => Promise<string[]>
+  onLoadAnalysisStyles: () => Promise<string[]>
+  onLoadTextTypes: () => Promise<TextTypeInfo[]>
 }
 
-function Settings({ settings, onSave, onCancel }: SettingsProps) {
+interface StyleOption {
+  value: string
+  label: string
+  icon: string
+}
+
+function Settings({
+  settings,
+  onSave,
+  onCancel,
+  onLoadCustomPrompts,
+  onSaveCustomPrompt,
+  onDeleteCustomPrompt,
+  onGetDefaultPrompt,
+  onLoadRewriteStyles,
+  onLoadAnalysisStyles,
+  onLoadTextTypes
+}: SettingsProps) {
   const [formData, setFormData] = useState<Config>(settings)
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [testingConnection, setTestingConnection] = useState(false)
@@ -18,10 +47,27 @@ function Settings({ settings, onSave, onCancel }: SettingsProps) {
   const [detectedVersion, setDetectedVersion] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const [customPrompts, setCustomPrompts] = useState<Record<string, Record<string, string>>>({})
+  const [rewriteStyles, setRewriteStyles] = useState<StyleOption[]>([])
+  const [analysisStyles, setAnalysisStyles] = useState<StyleOption[]>([])
+  const [textTypes, setTextTypes] = useState<TextTypeInfo[]>([])
+  const [selectedStyle, setSelectedStyle] = useState('')
+  const [selectedTextType, setSelectedTextType] = useState('')
+  const [customPromptText, setCustomPromptText] = useState('')
+  const [hasCustomPrompt, setHasCustomPrompt] = useState(false)
+  const [loadingPrompt, setLoadingPrompt] = useState(false)
+
+  // Feedback state for user operations
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const showFeedback = (type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message })
+    setTimeout(() => setFeedback(null), 3000)
+  }
+
   useEffect(() => {
     loadAvailableModels()
-    // Show window and set size for settings
-    runtime.WindowSetSize(580, 680)
+    loadSettingsData()
+    runtime.WindowSetSize(580, 820)
     runtime.WindowCenter()
     runtime.WindowShow()
   }, [])
@@ -35,6 +81,123 @@ function Settings({ settings, onSave, onCancel }: SettingsProps) {
       console.error('Failed to load models:', error)
       setAvailableModels([])
     }
+  }
+
+  const loadSettingsData = async () => {
+    try {
+      const [prompts, rwStyles, anStyles, types] = await Promise.all([
+        onLoadCustomPrompts(),
+        onLoadRewriteStyles(),
+        onLoadAnalysisStyles(),
+        onLoadTextTypes()
+      ])
+
+      setCustomPrompts(prompts || {})
+
+      const styleInfoPromises = rwStyles.map(style =>
+        // @ts-ignore
+        window.go.main.App.GetStyleInfo(style).catch(() => null)
+      )
+      const rwStyleInfos = await Promise.all(styleInfoPromises)
+
+      setRewriteStyles(rwStyles.map((style, i) => ({
+        value: style,
+        label: rwStyleInfos[i]?.label || style,
+        icon: rwStyleInfos[i]?.icon || '📝'
+      })))
+
+      const anStyleInfoPromises = anStyles.map(style =>
+        // @ts-ignore
+        window.go.main.App.GetStyleInfo(style).catch(() => null)
+      )
+      const anStyleInfos = await Promise.all(anStyleInfoPromises)
+
+      setAnalysisStyles(anStyles.map((style, i) => ({
+        value: style,
+        label: anStyleInfos[i]?.label || style,
+        icon: anStyleInfos[i]?.icon || '📋'
+      })))
+
+      setTextTypes(types || [])
+
+      if (rwStyles.length > 0) {
+        setSelectedStyle(rwStyles[0])
+      }
+      if (types.length > 0) {
+        setSelectedTextType(types[0].type)
+      }
+    } catch (error) {
+      console.error('Failed to load settings data:', error)
+    }
+  }
+
+  const loadPromptForSelection = async () => {
+    if (!selectedStyle || !selectedTextType) return
+
+    setLoadingPrompt(true)
+    try {
+      const key = `${selectedStyle}.${selectedTextType}`
+      const custom = customPrompts[selectedStyle]?.[selectedTextType]
+      const isCustom = custom !== undefined && custom !== ''
+
+      setHasCustomPrompt(isCustom)
+      setCustomPromptText(isCustom ? custom : '')
+    } finally {
+      setLoadingPrompt(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPromptForSelection()
+  }, [selectedStyle, selectedTextType, customPrompts])
+
+  const handleSaveCustomPrompt = async () => {
+    if (!selectedStyle || !selectedTextType) return
+
+    const result = await onSaveCustomPrompt(selectedStyle, selectedTextType, customPromptText)
+
+    if (result.success) {
+      const updated = { ...customPrompts }
+      if (!updated[selectedStyle]) {
+        updated[selectedStyle] = {}
+      }
+      updated[selectedStyle][selectedTextType] = customPromptText
+      setCustomPrompts(updated)
+      setHasCustomPrompt(true)
+      showFeedback('success', 'Custom prompt saved successfully')
+    } else {
+      showFeedback('error', result.error || 'Failed to save custom prompt')
+    }
+  }
+
+  const handleDeleteCustomPrompt = async () => {
+    if (!selectedStyle || !selectedTextType) return
+
+    const result = await onDeleteCustomPrompt(selectedStyle, selectedTextType)
+
+    if (result.success) {
+      const updated = { ...customPrompts }
+      if (updated[selectedStyle]) {
+        delete updated[selectedStyle][selectedTextType]
+        if (Object.keys(updated[selectedStyle]).length === 0) {
+          delete updated[selectedStyle]
+        }
+      }
+      setCustomPrompts(updated)
+      showFeedback('success', 'Custom prompt reset to default')
+    } else {
+      showFeedback('error', result.error || 'Failed to reset custom prompt')
+    }
+
+    const defaultPrompt = await onGetDefaultPrompt(selectedStyle, selectedTextType)
+    setCustomPromptText(defaultPrompt)
+    setHasCustomPrompt(false)
+  }
+
+  const handleLoadDefault = async () => {
+    if (!selectedStyle || !selectedTextType) return
+    const defaultPrompt = await onGetDefaultPrompt(selectedStyle, selectedTextType)
+    setCustomPromptText(defaultPrompt)
   }
 
   const testConnection = async () => {
@@ -217,6 +380,96 @@ function Settings({ settings, onSave, onCancel }: SettingsProps) {
           </div>
         </div>
 
+        <div className="settings-section">
+          <h3>Custom Prompts</h3>
+          <p className="section-description">
+            Customize prompts for specific styles and text types. Leave empty to use default prompts.
+          </p>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="prompt_style">Style</label>
+              <select
+                id="prompt_style"
+                value={selectedStyle}
+                onChange={(e) => setSelectedStyle(e.target.value)}
+              >
+                <optgroup label="Rewrite Styles">
+                  {rewriteStyles.map(style => (
+                    <option key={style.value} value={style.value}>
+                      {style.icon} {style.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Analysis Styles">
+                  {analysisStyles.map(style => (
+                    <option key={style.value} value={style.value}>
+                      {style.icon} {style.label}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="prompt_text_type">Text Type</label>
+              <select
+                id="prompt_text_type"
+                value={selectedTextType}
+                onChange={(e) => setSelectedTextType(e.target.value)}
+              >
+                {textTypes.map(type => (
+                  <option key={type.type} value={type.type}>
+                    {type.icon} {type.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="custom_prompt">
+              Custom Prompt
+              {hasCustomPrompt && <span className="custom-badge">Custom</span>}
+            </label>
+            <textarea
+              id="custom_prompt"
+              value={customPromptText}
+              onChange={(e) => setCustomPromptText(e.target.value)}
+              placeholder="Enter custom prompt... Leave empty to use default."
+              rows={8}
+              className="prompt-textarea"
+            />
+          </div>
+
+          <div className="prompt-actions">
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={handleLoadDefault}
+              disabled={loadingPrompt}
+            >
+              Load Default
+            </button>
+            <button
+              type="button"
+              className="delete-btn"
+              onClick={handleDeleteCustomPrompt}
+              disabled={!hasCustomPrompt || loadingPrompt}
+            >
+              Reset to Default
+            </button>
+            <button
+              type="button"
+              className="save-prompt-btn"
+              onClick={handleSaveCustomPrompt}
+              disabled={loadingPrompt}
+            >
+              Save Prompt
+            </button>
+          </div>
+        </div>
+
         <div className="settings-footer">
           <button
             type="button"
@@ -234,6 +487,12 @@ function Settings({ settings, onSave, onCancel }: SettingsProps) {
           </button>
         </div>
       </form>
+
+      {feedback && (
+        <div className={`feedback-toast ${feedback.type}`}>
+          {feedback.message}
+        </div>
+      )}
     </div>
   )
 }

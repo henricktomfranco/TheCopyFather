@@ -10,8 +10,16 @@ export function ApplyRewriteAndPaste(arg1) {
   return window['go']['main']['App']['ApplyRewriteAndPaste'](arg1);
 }
 
+export function DeleteCustomPrompt(arg1, arg2) {
+  return window['go']['main']['App']['DeleteCustomPrompt'](arg1, arg2);
+}
+
 export function DetectTextType(arg1) {
   return window['go']['main']['App']['DetectTextType'](arg1);
+}
+
+export function GetAllCustomPrompts() {
+  return window['go']['main']['App']['GetAllCustomPrompts']();
 }
 
 export function GetAnalysisStyles() {
@@ -24,6 +32,10 @@ export function GetAvailableModels() {
 
 export function GetCursorPosition() {
   return window['go']['main']['App']['GetCursorPosition']();
+}
+
+export function GetDefaultPrompt(arg1, arg2) {
+  return window['go']['main']['App']['GetDefaultPrompt'](arg1, arg2);
 }
 
 export function GetRewriteStyles() {
@@ -44,6 +56,10 @@ export function GetTextTypes() {
 
 export function Quit() {
   return window['go']['main']['App']['Quit']();
+}
+
+export function ResetAllCustomPrompts() {
+  return window['go']['main']['App']['ResetAllCustomPrompts']();
 }
 
 export function RetryAnalysis(arg1, arg2) {
@@ -72,6 +88,10 @@ export function RetryRewriteWithTextType(arg1, arg2, arg3, arg4) {
 
 export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
+}
+
+export function SetCustomPrompt(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetCustomPrompt'](arg1, arg2, arg3);
 }
 
 export function TestConnection(arg1, arg2, arg3) {

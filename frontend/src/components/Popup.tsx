@@ -67,9 +67,15 @@ function Popup({
 
   // Formatting toggle state
   const [enableFormatting, setEnableFormatting] = useState(true)
+  const enableFormattingRef = useRef(enableFormatting)
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    enableFormattingRef.current = enableFormatting
+  }, [enableFormatting])
 
   // Result cache for lazy loading optimization
-  const [styleCache, setStyleCache] = useState<Map<string, string>>(new Map())
+  const styleCacheRef = useRef<Map<string, string>>(new Map())
 
   // Text type detection state
   const [detectedTextType, setDetectedTextType] = useState<DetectedTextType | null>(null)
@@ -138,22 +144,27 @@ function Popup({
   const generate = useCallback(async (targetMainMode: string, targetStyle: string, useTextType: boolean = false) => {
     if (!originalText) return
 
+    // Use ref for latest values to avoid stale closure issues
+    const currentFormatting = enableFormattingRef.current
+    const currentTextType = selectedTextType
+    const cache = styleCacheRef.current
+
     // Create cache key based on mode, style, whether using text type, and formatting preference
-    const cacheKey = `${targetMainMode}-${targetStyle}-${useTextType ? selectedTextType : 'auto'}-${enableFormatting}`
+    const cacheKey = `${targetMainMode}-${targetStyle}-${useTextType ? currentTextType : 'auto'}-${currentFormatting}`
 
     console.log('Generate called:', {
       targetMainMode, 
       targetStyle, 
       useTextType, 
-      selectedTextType, 
+      selectedTextType: currentTextType, 
       cacheKey,
       isUserOverride
     })
 
     // Check cache first
-    if (styleCache.has(cacheKey)) {
+    if (cache.has(cacheKey)) {
       console.log('Using cached result for key:', cacheKey)
-      setResult(styleCache.get(cacheKey)!)
+      setResult(cache.get(cacheKey)!)
       setError(null)
       return
     }
@@ -165,8 +176,8 @@ function Popup({
     try {
       let generatedText = ''
 
-      // Only use text type when user has explicitly overridden it
-      const textTypeToUse = useTextType ? selectedTextType : 'normal'
+      // Use text type if provided (either detected or user overridden)
+      const textTypeToUse = useTextType ? currentTextType : 'normal'
       const useTypeSpecific = useTextType
 
       console.log('Using text type specific:', useTypeSpecific, 'Text type:', textTypeToUse)
@@ -174,7 +185,7 @@ function Popup({
       if (targetMainMode === 'analyze') {
         if (useTypeSpecific) {
           // @ts-ignore
-          const option = await window.go.main.App.RetryAnalysisWithTextType(originalText, targetStyle, textTypeToUse, enableFormatting)
+          const option = await window.go.main.App.RetryAnalysisWithTextType(originalText, targetStyle, textTypeToUse, currentFormatting)
           console.log('Analysis with text type result:', option)
           if (option.error) {
             setError(option.error)
@@ -185,7 +196,7 @@ function Popup({
         } else {
           // Use generic analysis without text type
           // @ts-ignore
-          const option = await window.go.main.App.RetryAnalysisWithFormatting(originalText, targetStyle, enableFormatting)
+          const option = await window.go.main.App.RetryAnalysisWithFormatting(originalText, targetStyle, currentFormatting)
           console.log('Analysis generic result:', option)
           if (option.error) {
             setError(option.error)
@@ -198,7 +209,7 @@ function Popup({
         // Rewrite mode
         if (useTypeSpecific) {
           // @ts-ignore
-          const option = await window.go.main.App.RetryRewriteWithTextType(originalText, targetStyle, textTypeToUse, enableFormatting)
+          const option = await window.go.main.App.RetryRewriteWithTextType(originalText, targetStyle, textTypeToUse, currentFormatting)
           console.log('Rewrite with text type result:', option)
           if (option.error) {
             setError(option.error)
@@ -209,7 +220,7 @@ function Popup({
         } else {
           // Use generic rewrite without text type
           // @ts-ignore
-          const option = await window.go.main.App.RetryRewriteWithFormatting(originalText, targetStyle, enableFormatting)
+          const option = await window.go.main.App.RetryRewriteWithFormatting(originalText, targetStyle, currentFormatting)
           console.log('Rewrite generic result:', option)
           if (option.error) {
             setError(option.error)
@@ -222,20 +233,33 @@ function Popup({
 
       // Cache the successful result
       if (generatedText) {
-        setStyleCache(prev => new Map(prev).set(cacheKey, generatedText))
+        cache.set(cacheKey, generatedText)
       }
     } catch (err) {
       console.error('Generate error:', err)
       setError('Failed to connect to AI server')
     }
     setLoading(false)
-  }, [originalText, enableFormatting, styleCache, selectedTextType, isUserOverride])
+  }, [originalText, selectedTextType, isUserOverride])
 
+  // Initial generation after text type detection completes
   useEffect(() => {
+    if (!originalText) return
+    
     runtime.WindowSetAlwaysOnTop(true)
     runtime.WindowShow()
-    generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, false) // Initially don't use text type
-  }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, false])
+    
+    // Only generate after text type detection is complete (not loading)
+    if (!isDetecting && detectedTextType) {
+      // Use detected text type if confidence is high enough (>= 0.6)
+      const shouldUseDetectedType = detectedTextType.confidence >= 0.6
+      generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, shouldUseDetectedType)
+    } else if (!isDetecting) {
+      // Detection completed but no result, use normal
+      generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, false)
+    }
+    // If still detecting, wait for it to complete
+  }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, isDetecting, detectedTextType, originalText])
 
   // Handle outside click for dropdown
   useEffect(() => {
@@ -248,26 +272,32 @@ function Popup({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Helper to determine if we should use detected text type
+  const shouldUseTextType = () => {
+    return detectedTextType !== null && detectedTextType.confidence >= 0.6
+  }
+
   const handleMainModeChange = (newMode: 'rewrite' | 'analyze') => {
     if (newMode === mainMode) return
     setMainMode(newMode)
+    const useTextType = shouldUseTextType()
     if (newMode === 'analyze') {
-      generate('analyze', analysisStyle)
+      generate('analyze', analysisStyle, useTextType)
     } else {
-      generate('rewrite', rewriteStyle)
+      generate('rewrite', rewriteStyle, useTextType)
     }
   }
 
   const handleRewriteStyleChange = (newStyle: string) => {
     setRewriteStyle(newStyle)
     setDropdownOpen(false)
-    generate('rewrite', newStyle)
+    generate('rewrite', newStyle, shouldUseTextType())
   }
 
   const handleAnalysisStyleChange = (newStyle: string) => {
     setAnalysisStyle(newStyle)
     setDropdownOpen(false)
-    generate('analyze', newStyle)
+    generate('analyze', newStyle, shouldUseTextType())
   }
 
   const handleTextTypeChange = (newType: string) => {
@@ -490,7 +520,18 @@ function Popup({
             <input
               type="checkbox"
               checked={enableFormatting}
-              onChange={(e) => setEnableFormatting(e.target.checked)}
+              onChange={(e) => {
+                const newValue = e.target.checked
+                setEnableFormatting(newValue)
+                // Regenerate with new formatting preference after state updates
+                setTimeout(() => {
+                  if (mainMode === 'analyze') {
+                    generate('analyze', analysisStyle, shouldUseTextType())
+                  } else {
+                    generate('rewrite', rewriteStyle, shouldUseTextType())
+                  }
+                }, 0)
+              }}
             />
             <span className="toggle-slider"></span>
             <span className="toggle-label">{enableFormatting ? '✨' : 'T'}</span>
@@ -664,7 +705,7 @@ function Popup({
             <div className="error-box">
               <div className="error-icon">⚠️</div>
               <p>{error}</p>
-              <button className="secondary-btn" onClick={() => generate(mainMode, mainMode === 'analyze' ? analysisStyle : rewriteStyle)}>Retry Connection</button>
+              <button className="secondary-btn" onClick={() => generate(mainMode, mainMode === 'analyze' ? analysisStyle : rewriteStyle, shouldUseTextType())}>Retry Connection</button>
             </div>
           ) : (
             <div className="result-text markdown-content" onClick={() => onSelect(result)}>

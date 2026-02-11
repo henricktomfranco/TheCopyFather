@@ -9,7 +9,7 @@ export namespace config {
 	    hotkey: string;
 	    monitor_clipboard: boolean;
 	    first_run: boolean;
-	    rewrite_prompts?: Record<string, string>;
+	    custom_prompts?: Record<string, any>;
 	    auto_paste_mode: string;
 	    popup_position_mode: string;
 	
@@ -27,7 +27,7 @@ export namespace config {
 	        this.hotkey = source["hotkey"];
 	        this.monitor_clipboard = source["monitor_clipboard"];
 	        this.first_run = source["first_run"];
-	        this.rewrite_prompts = source["rewrite_prompts"];
+	        this.custom_prompts = source["custom_prompts"];
 	        this.auto_paste_mode = source["auto_paste_mode"];
 	        this.popup_position_mode = source["popup_position_mode"];
 	    }

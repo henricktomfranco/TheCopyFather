@@ -78,7 +78,7 @@ func (r *Rewriter) GenerateSingleRewrite(ctx context.Context, text, style string
 		return RewriteOption{}, fmt.Errorf("invalid style: %s", style)
 	}
 
-	systemPrompt := r.config.GetPrompt(style)
+	systemPrompt := r.config.GetPrompt(style, "normal")
 	rewritten, err := r.client.GenerateRewrite(ctx, text, style, systemPrompt)
 
 	if err != nil {
@@ -105,7 +105,7 @@ func (r *Rewriter) GenerateSingleAnalysis(ctx context.Context, text, style strin
 		return RewriteOption{}, fmt.Errorf("invalid analysis style: %s", style)
 	}
 
-	systemPrompt := r.config.GetPrompt(style)
+	systemPrompt := r.config.GetPrompt(style, "normal")
 	rewritten, err := r.client.GenerateRewrite(ctx, text, style, systemPrompt)
 
 	if err != nil {
@@ -130,9 +130,14 @@ func (r *Rewriter) GenerateSingleRewriteWithFormatting(ctx context.Context, text
 
 	var systemPrompt string
 	if enableFormatting {
-		systemPrompt = r.config.GetPrompt(style)
+		systemPrompt = r.config.GetPrompt(style, "normal")
 	} else {
-		systemPrompt = getPlainTextPrompt(style)
+		// Check for custom prompt first, fall back to plain text prompt
+		if customPrompt := r.config.GetCustomPrompt(style, "normal"); customPrompt != "" {
+			systemPrompt = customPrompt
+		} else {
+			systemPrompt = getPlainTextPrompt(style)
+		}
 	}
 
 	rewritten, err := r.client.GenerateRewrite(ctx, text, style, systemPrompt)
@@ -166,9 +171,14 @@ func (r *Rewriter) GenerateSingleAnalysisWithFormatting(ctx context.Context, tex
 
 	var systemPrompt string
 	if enableFormatting {
-		systemPrompt = r.config.GetPrompt(style)
+		systemPrompt = r.config.GetPrompt(style, "normal")
 	} else {
-		systemPrompt = getPlainTextPrompt(style)
+		// Check for custom prompt first, fall back to plain text prompt
+		if customPrompt := r.config.GetCustomPrompt(style, "normal"); customPrompt != "" {
+			systemPrompt = customPrompt
+		} else {
+			systemPrompt = getPlainTextPrompt(style)
+		}
 	}
 
 	rewritten, err := r.client.GenerateRewrite(ctx, text, style, systemPrompt)
@@ -477,7 +487,16 @@ Output: Return ONLY the insights. No filler.`,
 
 // getPromptForTextType returns a prompt customized for the specific text type
 func (r *Rewriter) getPromptForTextType(style string, textType TextType, enableFormatting bool) string {
-	// Text type specific instructions
+	textTypeStr := string(textType)
+
+	if customPrompt := r.config.GetCustomPrompt(style, textTypeStr); customPrompt != "" {
+		return customPrompt
+	}
+
+	if !enableFormatting {
+		return getPlainTextPrompt(style)
+	}
+
 	typeInstructions := map[TextType]map[string]string{
 		TextTypeEmail: {
 			"grammar":    "You are an expert editor.\nTask: Fix grammar, spelling, and punctuation in this EMAIL.\nGuidelines:\n- Preserve greeting, body, and closing.\n- Improve flow and professional tone.\nOutput: Return ONLY the corrected email.",
@@ -546,14 +565,12 @@ func (r *Rewriter) getPromptForTextType(style string, textType TextType, enableF
 		},
 	}
 
-	// Get instructions for this text type and style
 	if typeMap, ok := typeInstructions[textType]; ok {
 		if instruction, ok := typeMap[style]; ok {
 			return instruction
 		}
 	}
 
-	// Fallback to generic prompt
 	return getPlainTextPrompt(style)
 }
 
