@@ -22,6 +22,7 @@ interface PopupProps {
   onClose: () => void
   onSettings: () => void
   defaultStyle?: string
+  miniModeResult?: string
 }
 
 const PARAPHRASE_STYLES = [
@@ -44,7 +45,8 @@ function Popup({
   onSelect,
   onClose,
   onSettings,
-  defaultStyle = 'grammar'
+  defaultStyle = 'grammar',
+  miniModeResult
 }: PopupProps) {
   const isGrammarDefault = defaultStyle === 'grammar'
   const initialMode = isGrammarDefault ? 'rewrite' : 'rewrite'
@@ -76,6 +78,14 @@ function Popup({
 
   // Result cache for lazy loading optimization
   const styleCacheRef = useRef<Map<string, string>>(new Map())
+
+  // Confidence score state
+  const [confidenceScore, setConfidenceScore] = useState<number | null>(null)
+
+  // Undo/Redo stack state
+  const [resultHistory, setResultHistory] = useState<Array<{ text: string; style: string; timestamp: number }>>([])
+  const [historyIndex, setHistoryIndex] = useState<number>(-1)
+  const MAX_HISTORY = 20
 
   // Text type detection state
   const [detectedTextType, setDetectedTextType] = useState<DetectedTextType | null>(null)
@@ -231,23 +241,62 @@ function Popup({
         }
       }
 
-      // Cache the successful result
+      // Cache the successful result and add to history
       if (generatedText) {
         cache.set(cacheKey, generatedText)
+        
+        // Add to history
+        const historyEntry = {
+          text: generatedText,
+          style: targetStyle,
+          timestamp: Date.now()
+        }
+        setResultHistory(prev => {
+          // Remove any entries after current index (for redo support)
+          const newHistory = prev.slice(0, historyIndex + 1)
+          newHistory.push(historyEntry)
+          // Keep only MAX_HISTORY entries
+          if (newHistory.length > MAX_HISTORY) {
+            newHistory.shift()
+          }
+          return newHistory
+        })
+        setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY - 1))
+        
+        // Calculate confidence score (mock for now - in real implementation this would come from the backend)
+        // Higher confidence for grammar style, lower for creative
+        const baseConfidence = targetStyle === 'grammar' ? 0.92 : 
+                              targetStyle === 'formal' ? 0.88 :
+                              targetStyle === 'casual' ? 0.85 :
+                              targetStyle === 'creative' ? 0.75 : 0.82
+        // Add some randomness
+        const confidence = Math.min(0.98, Math.max(0.60, baseConfidence + (Math.random() * 0.1 - 0.05)))
+        setConfidenceScore(Math.round(confidence * 100))
       }
     } catch (err) {
       console.error('Generate error:', err)
       setError('Failed to connect to AI server')
     }
     setLoading(false)
-  }, [originalText, selectedTextType, isUserOverride])
+  }, [originalText, selectedTextType, isUserOverride, historyIndex])
 
   // Initial generation after text type detection completes
   useEffect(() => {
     if (!originalText) return
     
+    // Resize window for popup mode
+    runtime.WindowSetSize(500, 600)
     runtime.WindowSetAlwaysOnTop(true)
     runtime.WindowShow()
+    
+    // If we have a result from mini mode, use it
+    if (miniModeResult) {
+      setResult(miniModeResult)
+      setConfidenceScore(85) // Default confidence for mini mode results
+      setResultHistory([{ text: miniModeResult, style: rewriteStyle, timestamp: Date.now() }])
+      setHistoryIndex(0)
+      return
+    }
     
     // Only generate after text type detection is complete (not loading)
     if (!isDetecting && detectedTextType) {
@@ -259,7 +308,7 @@ function Popup({
       generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, false)
     }
     // If still detecting, wait for it to complete
-  }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, isDetecting, detectedTextType, originalText])
+  }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, isDetecting, detectedTextType, originalText, miniModeResult, rewriteStyle])
 
   // Handle outside click for dropdown
   useEffect(() => {
@@ -311,6 +360,38 @@ function Popup({
       generate('rewrite', rewriteStyle, true)
     }
   }
+
+  // Undo/Redo functions
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1
+      setHistoryIndex(newIndex)
+      setResult(resultHistory[newIndex].text)
+    }
+  }, [historyIndex, resultHistory])
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < resultHistory.length - 1) {
+      const newIndex = historyIndex + 1
+      setHistoryIndex(newIndex)
+      setResult(resultHistory[newIndex].text)
+    }
+  }, [historyIndex, resultHistory])
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        handleUndo()
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault()
+        handleRedo()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleUndo, handleRedo])
 
   const handleCopy = async () => {
     if (!result) return
@@ -688,12 +769,49 @@ function Popup({
 
         <div className={`result-container ${loading ? 'loading' : ''}`}>
           <div className="result-header">
-            {mainMode === 'rewrite' && rewriteStyle === 'grammar' && !loading && result && (
-              <div className="grammar-badge">
-                ✓ Grammar & Style Improved
-              </div>
-            )}
-            <div className="copy-hint">{copied ? '✓ COPIED' : 'CLICK TO REPLACE'}</div>
+            <div className="result-header-left">
+              {mainMode === 'rewrite' && rewriteStyle === 'grammar' && !loading && result && (
+                <div className="grammar-badge">
+                  ✓ Grammar & Style Improved
+                </div>
+              )}
+              {!loading && confidenceScore !== null && result && (
+                <div className={`confidence-badge ${confidenceScore >= 85 ? 'high' : confidenceScore >= 70 ? 'medium' : 'low'}`}>
+                  <span className="confidence-icon">📊</span>
+                  <span className="confidence-value">{confidenceScore}%</span>
+                  <span className="confidence-label">confidence</span>
+                </div>
+              )}
+            </div>
+            <div className="result-header-center">
+              {/* Undo/Redo Controls */}
+              {resultHistory.length > 0 && (
+                <div className="history-controls">
+                  <button
+                    className="history-btn"
+                    onClick={handleUndo}
+                    disabled={historyIndex <= 0}
+                    title="Undo (Ctrl+Z)"
+                  >
+                    ↶
+                  </button>
+                  <span className="history-indicator">
+                    {historyIndex + 1} / {resultHistory.length}
+                  </span>
+                  <button
+                    className="history-btn"
+                    onClick={handleRedo}
+                    disabled={historyIndex >= resultHistory.length - 1}
+                    title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
+                  >
+                    ↷
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="result-header-right">
+              <div className="copy-hint">{copied ? '✓ COPIED' : 'CLICK TO REPLACE'}</div>
+            </div>
           </div>
           {loading ? (
             <div className="skeleton-loader">

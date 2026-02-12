@@ -12,6 +12,7 @@ export namespace config {
 	    custom_prompts?: Record<string, any>;
 	    auto_paste_mode: string;
 	    popup_position_mode: string;
+	    mini_mode: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -30,6 +31,7 @@ export namespace config {
 	        this.custom_prompts = source["custom_prompts"];
 	        this.auto_paste_mode = source["auto_paste_mode"];
 	        this.popup_position_mode = source["popup_position_mode"];
+	        this.mini_mode = source["mini_mode"];
 	    }
 	}
 

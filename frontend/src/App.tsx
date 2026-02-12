@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import Popup from './components/Popup'
 import Settings from './components/Settings'
 import Welcome from './components/Welcome'
+import MiniMode from './components/MiniMode'
 import * as runtime from '../wailsjs/runtime'
 import './styles/main.css'
 
-export type View = 'popup' | 'settings' | 'welcome'
+export type View = 'popup' | 'settings' | 'welcome' | 'mini'
 
 export interface RewriteOption {
   style: string
@@ -25,6 +26,7 @@ export interface Config {
   auto_paste_mode?: string
   popup_position_mode?: string
   custom_prompts?: Record<string, Record<string, string>>
+  mini_mode?: boolean
 }
 
 export interface TextTypeInfo {
@@ -45,14 +47,30 @@ function App() {
   const [selectedText, setSelectedText] = useState('')
   const [selectionTrigger, setSelectionTrigger] = useState(0)
   const [settings, setSettings] = useState<Config | null>(null)
+  const [miniModeResult, setMiniModeResult] = useState<string>('')
+  const [isGenerating, setIsGenerating] = useState(false)
 
   useEffect(() => {
     // Listen for text selection event from backend
-    runtime.EventsOn('text:selected', (text: string) => {
+    runtime.EventsOn('text:selected', async (text: string) => {
       console.log('Frontend received text:', text)
       setSelectedText(text)
       setSelectionTrigger(prev => prev + 1)
-      setCurrentView(prev => prev === 'welcome' ? 'welcome' : 'popup')
+      setMiniModeResult('')
+      
+      // Read mini_mode setting directly from backend
+      try {
+        // @ts-ignore
+        const config = await window.go.main.App.GetSettings()
+        const useMini = config?.mini_mode ?? false
+        setCurrentView(prev => {
+          if (prev === 'welcome') return 'welcome'
+          return useMini ? 'mini' : 'popup'
+        })
+      } catch (e) {
+        // Fallback to popup if settings can't be read
+        setCurrentView('popup')
+      }
     })
 
     // Listen for show settings event from system tray
@@ -200,10 +218,58 @@ const handleSaveSettings = async (newSettings: Config) => {
     setCurrentView('settings')
   }
 
+  const handleMiniModeExpand = () => {
+    setCurrentView('popup')
+  }
+
+  const handleMiniModeRewrite = async (style: string) => {
+    if (!selectedText) return
+    setIsGenerating(true)
+    try {
+      // @ts-ignore
+      const result = await window.go.main.App.RetryRewriteWithFormatting(selectedText, style, true)
+      if (result.text) {
+        setMiniModeResult(result.text)
+        // Auto-copy to clipboard
+        // @ts-ignore
+        await window.go.main.App.ApplyRewrite(result.text)
+      }
+    } catch (error) {
+      console.error('Mini mode rewrite failed:', error)
+    }
+    setIsGenerating(false)
+  }
+
+  const rewriteStylesList = [
+    { value: 'grammar', label: 'Grammar', icon: '🛡️' },
+    { value: 'standard', label: 'Standard', icon: '📝' },
+    { value: 'formal', label: 'Formal', icon: '📢' },
+    { value: 'casual', label: 'Casual', icon: '💬' },
+    { value: 'creative', label: 'Creative', icon: '✨' },
+    { value: 'short', label: 'Short', icon: '📏' },
+    { value: 'expand', label: 'Expand', icon: '📖' },
+  ]
+
   return (
     <div className="app">
       {currentView === 'welcome' && (
         <Welcome onAccept={handleAcceptFirstRun} />
+      )}
+
+      {currentView === 'mini' && settings && (
+        <MiniMode
+          originalText={selectedText}
+          currentStyle={settings.default_style}
+          onExpand={handleMiniModeExpand}
+          onClose={handleClose}
+          onStyleChange={(style) => {
+            const newSettings = { ...settings, default_style: style }
+            handleSaveSettings(newSettings)
+          }}
+          onQuickRewrite={() => handleMiniModeRewrite(settings.default_style)}
+          availableStyles={rewriteStylesList}
+          isGenerating={isGenerating}
+        />
       )}
 
       {currentView === 'popup' && settings && (
@@ -214,6 +280,7 @@ const handleSaveSettings = async (newSettings: Config) => {
           onClose={handleClose}
           onSettings={handleOpenSettings}
           defaultStyle={settings.default_style}
+          miniModeResult={miniModeResult}
         />
       )}
 

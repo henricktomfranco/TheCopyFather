@@ -323,6 +323,19 @@ function Settings({
           </div>
 
           <div className="form-group">
+            <label className="checkbox-label">
+              <span>Use Compact Mode</span>
+              <input
+                type="checkbox"
+                checked={formData.mini_mode || false}
+                onChange={(e) => handleChange('mini_mode', e.target.checked)}
+              />
+              <div className="switch"></div>
+            </label>
+            <small>Show compact floating widget instead of full popup</small>
+          </div>
+
+          <div className="form-group">
             <label htmlFor="hotkey">Global Activation Key</label>
             <input
               type="text"
