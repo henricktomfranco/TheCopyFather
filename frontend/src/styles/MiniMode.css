@@ -1,11 +1,11 @@
 .mini-mode {
   width: 320px;
-  background: linear-gradient(135deg, rgba(30, 30, 40, 0.98), rgba(20, 20, 30, 0.98));
-  border: 1px solid rgba(100, 100, 120, 0.3);
+  background: linear-gradient(135deg, rgba(40, 35, 60, 0.98), rgba(25, 22, 40, 0.98));
+  border: 1px solid rgba(99, 102, 241, 0.3);
   border-radius: 12px;
   box-shadow: 
-    0 8px 32px rgba(0, 0, 0, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.3);
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(99, 102, 241, 0.15);
   backdrop-filter: blur(20px);
   z-index: 9999;
   user-select: none;
@@ -26,7 +26,7 @@
 
 .mini-mode.dragging {
   cursor: grabbing;
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
 /* Header */
@@ -34,7 +34,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: grab;
@@ -153,10 +153,12 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: linear-gradient(135deg, rgba(40, 40, 50, 0.98), rgba(30, 30, 40, 0.98));
-  border: 1px solid rgba(100, 100, 120, 0.3);
+  background: linear-gradient(135deg, rgba(45, 40, 65, 0.98), rgba(30, 27, 50, 0.98));
+  border: 1px solid rgba(99, 102, 241, 0.3);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 15px rgba(99, 102, 241, 0.1);
   max-height: 200px;
   overflow-y: auto;
   z-index: 10000;
@@ -190,11 +192,12 @@
 }
 
 .minimode-dropdown .dropdown-item:hover {
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(99, 102, 241, 0.2);
 }
 
 .minimode-dropdown .dropdown-item.active {
-  background: rgba(59, 130, 246, 0.25);
+  background: rgba(99, 102, 241, 0.3);
+  color: white;
 }
 
 .minimode-dropdown .item-icon {
@@ -208,21 +211,23 @@
 /* Rewrite Button */
 .rewrite-btn {
   padding: 8px 14px;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  border-color: rgba(59, 130, 246, 0.4);
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  border-color: rgba(99, 102, 241, 0.5);
   color: white;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
 .rewrite-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #4b92f6, #3573eb);
+  background: linear-gradient(135deg, #7c7cf7 0%, #5a52f0 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
 }
 
 .rewrite-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .rewrite-btn.generating {
@@ -250,11 +255,18 @@
 .expand-btn {
   padding: 8px;
   font-size: 14px;
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.expand-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.4);
 }
 
 /* Status Bar */
 .mini-status {
-  padding: 6px 12px;
+  padding: 5px 12px;
   background: rgba(0, 0, 0, 0.2);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }

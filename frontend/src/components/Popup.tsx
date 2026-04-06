@@ -284,15 +284,15 @@ function Popup({
   useEffect(() => {
     if (!originalText) return
     
-    // Resize window for popup mode
-    runtime.WindowSetSize(500, 600)
+    // Fixed window size
+    runtime.WindowSetSize(460, 620)
     runtime.WindowSetAlwaysOnTop(true)
     runtime.WindowShow()
     
     // If we have a result from mini mode, use it
     if (miniModeResult) {
       setResult(miniModeResult)
-      setConfidenceScore(85) // Default confidence for mini mode results
+      setConfidenceScore(85)
       setResultHistory([{ text: miniModeResult, style: rewriteStyle, timestamp: Date.now() }])
       setHistoryIndex(0)
       return
@@ -300,14 +300,12 @@ function Popup({
     
     // Only generate after text type detection is complete (not loading)
     if (!isDetecting && detectedTextType) {
-      // Use detected text type if confidence is high enough (>= 0.6)
-      const shouldUseDetectedType = detectedTextType.confidence >= 0.6
-      generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, shouldUseDetectedType)
+      // Always use detected text type
+      generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, true)
     } else if (!isDetecting) {
       // Detection completed but no result, use normal
       generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, false)
     }
-    // If still detecting, wait for it to complete
   }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, isDetecting, detectedTextType, originalText, miniModeResult, rewriteStyle])
 
   // Handle outside click for dropdown
@@ -321,9 +319,10 @@ function Popup({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Helper to determine if we should use detected text type
+  // Helper to determine if we should use text type
+  // Always use detected type if available, regardless of confidence
   const shouldUseTextType = () => {
-    return detectedTextType !== null && detectedTextType.confidence >= 0.6
+    return selectedTextType !== '' && selectedTextType !== 'unknown'
   }
 
   const handleMainModeChange = (newMode: 'rewrite' | 'analyze') => {
@@ -580,20 +579,20 @@ function Popup({
   }
 
   return (
-    <div className="popup modern">
+    <div className="popup modern compact">
       <div className="popup-nav">
         <div className="mode-toggle">
           <button
             className={`toggle-btn ${mainMode === 'rewrite' ? 'active' : ''}`}
             onClick={() => handleMainModeChange('rewrite')}
           >
-            🔄 Rewrite
+            <span>🔄</span>
           </button>
           <button
             className={`toggle-btn ${mainMode === 'analyze' ? 'active' : ''}`}
             onClick={() => handleMainModeChange('analyze')}
           >
-            📊 Analyze
+            <span>📊</span>
           </button>
         </div>
         <div className="formatting-toggle-container">
@@ -615,83 +614,17 @@ function Popup({
               }}
             />
             <span className="toggle-slider"></span>
-            <span className="toggle-label">{enableFormatting ? '✨' : 'T'}</span>
+            <span className="toggle-label">{enableFormatting ? '◎' : '⦿'}</span>
           </label>
         </div>
         <div className="nav-actions">
-          <button className="icon-btn" onClick={onSettings} title="Settings">⚙️</button>
-          <button className="icon-btn" onClick={onClose} title="Close">✕</button>
+          <button className="icon-btn small" onClick={onSettings} title="Settings">⚙️</button>
+          <button className="icon-btn small" onClick={onClose} title="Close">✕</button>
         </div>
       </div>
 
 
       <div className="content-area">
-        {/* Text Type Detection Badge */}
-        {selectedTextType && (
-          <div className="text-type-section" ref={textTypeDropdownRef}>
-            <div className="text-type-label">
-              {isUserOverride ? 'Applied Type:' : 'Detected Type:'}
-            </div>
-            <div className="custom-dropdown text-type-dropdown">
-              <div
-                className={`dropdown-trigger text-type-trigger ${textTypeDropdownOpen ? 'open' : ''} ${!isUserOverride && detectedTextType && detectedTextType.confidence < 0.6 ? 'low-confidence' : ''} ${isUserOverride ? 'user-override' : ''}`}
-                onClick={() => setTextTypeDropdownOpen(!textTypeDropdownOpen)}
-                title={isUserOverride 
-                  ? 'You selected this type - rewrite uses type-specific prompts' 
-                  : detectedTextType && detectedTextType.confidence < 0.6 
-                    ? 'Low confidence - click to correct' 
-                    : 'Auto-detected (click to apply type-specific rewrite)'}
-              >
-                <span>
-                  {isDetecting ? (
-                    <>🔍 Analyzing...</>
-                  ) : (
-                    <>
-                      {availableTextTypes.find(t => t.type === selectedTextType)?.icon || '📝'} {' '}
-                      {availableTextTypes.find(t => t.type === selectedTextType)?.label || 'Text'}
-                      {!isUserOverride && detectedTextType && detectedTextType.confidence < 0.6 && ' ⚠️'}
-                      {isUserOverride && ' ✓'}
-                    </>
-                  )}
-                </span>
-                <span className="chevron">↓</span>
-              </div>
-
-              {textTypeDropdownOpen && (
-                <div className="dropdown-menu text-type-menu">
-                  <div className="dropdown-header">
-                    <span>{isUserOverride ? 'Change applied type:' : 'Detected type - select to apply:'}</span>
-                    {detectedTextType && !isUserOverride && (
-                      <span className="confidence-hint">
-                        Confidence: {(detectedTextType.confidence * 100).toFixed(0)}%
-                      </span>
-                    )}
-                    {isUserOverride && (
-                      <span className="override-hint">
-                        Type-specific rewrite active
-                      </span>
-                    )}
-                  </div>
-                  <div className="dropdown-divider"></div>
-                  {availableTextTypes.map(t => (
-                    <div
-                      key={t.type}
-                      className={`dropdown-item ${t.type === selectedTextType ? 'active' : ''}`}
-                      onClick={() => handleTextTypeChange(t.type)}
-                    >
-                      <div className="item-icon">{t.icon}</div>
-                      <div className="item-content">
-                        <div className="item-label">{t.label}</div>
-                        <div className="item-desc">{t.description}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {mainMode === 'rewrite' && (
           <div className="style-selector" ref={dropdownRef}>
             <div className="custom-dropdown">
@@ -770,6 +703,56 @@ function Popup({
         <div className={`result-container ${loading ? 'loading' : ''}`}>
           <div className="result-header">
             <div className="result-header-left">
+              {/* Text Type Detection - Inside result header */}
+              {selectedTextType && (
+                <div className="text-type-badge" ref={textTypeDropdownRef}>
+                  <div className="custom-dropdown text-type-dropdown">
+                    <div
+                      className={`dropdown-trigger text-type-trigger ${textTypeDropdownOpen ? 'open' : ''} ${!isUserOverride && detectedTextType && detectedTextType.confidence < 0.6 ? 'low-confidence' : ''} ${isUserOverride ? 'user-override' : ''}`}
+                      onClick={() => setTextTypeDropdownOpen(!textTypeDropdownOpen)}
+                      title={isUserOverride 
+                        ? 'You selected this type' 
+                        : detectedTextType && detectedTextType.confidence < 0.6 
+                          ? 'Low confidence - click to correct' 
+                          : 'Auto-detected (click to change)'}
+                    >
+                      <span>
+                        {isDetecting ? (
+                          <>🔍</>
+                        ) : (
+                          <>
+                            {availableTextTypes.find(t => t.type === selectedTextType)?.icon || '📝'} {' '}
+                            {availableTextTypes.find(t => t.type === selectedTextType)?.label || 'Text'}
+                          </>
+                        )}
+                      </span>
+                      <span className="chevron">↓</span>
+                    </div>
+
+                    {textTypeDropdownOpen && (
+                      <div className="dropdown-menu text-type-menu">
+                        <div className="dropdown-header">
+                          <span>{isUserOverride ? 'Change type:' : 'Select type:'}</span>
+                        </div>
+                        <div className="dropdown-divider"></div>
+                        {availableTextTypes.map(t => (
+                          <div
+                            key={t.type}
+                            className={`dropdown-item ${t.type === selectedTextType ? 'active' : ''}`}
+                            onClick={() => handleTextTypeChange(t.type)}
+                          >
+                            <div className="item-icon">{t.icon}</div>
+                            <div className="item-content">
+                              <div className="item-label">{t.label}</div>
+                              <div className="item-desc">{t.description}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {mainMode === 'rewrite' && rewriteStyle === 'grammar' && !loading && result && (
                 <div className="grammar-badge">
                   ✓ Grammar & Style Improved
@@ -946,7 +929,12 @@ function Popup({
           border-color: rgba(255, 255, 255, 0.4);
         }
         
-        /* Existing Styles */
+        /* Style Selector Dropdown - as reference */
+        .style-selector {
+          position: relative;
+          z-index: 500;
+        }
+        
         .dropdown-trigger .chevron {
           font-size: 10px;
           transition: transform 0.2s;
@@ -963,7 +951,7 @@ function Popup({
           border: 1px solid var(--border-bright);
           border-radius: var(--radius-md);
           box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
-          z-index: 1000;
+          z-index: 600;
           padding: 6px;
           animation: menuAppear 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
@@ -1165,90 +1153,109 @@ function Popup({
           font-size: 14px;
         }
 
-        /* Text Type Selector Styles */
-        .text-type-section {
+        /* Footer Button Styles */
+        .modern-footer {
+          margin-top: 16px;
+          display: flex;
+          gap: 12px;
+          align-items: stretch;
+          position: relative;
+          z-index: 50;
+        }
+        
+        .primary-btn {
+          flex: 2;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          color: white;
+          border: none;
+          padding: 14px 24px;
+          border-radius: 10px;
+          font-weight: 600;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
           display: flex;
           align-items: center;
-          gap: 10px;
-          margin-bottom: 16px;
-          padding: 8px 12px;
-          background: var(--bg-glass);
-          backdrop-filter: var(--glass-backdrop);
-          border-radius: var(--radius-md);
-          border: 1px solid var(--border-subtle);
-          position: relative;
-          z-index: 100;
+          justify-content: center;
+          gap: 8px;
+          min-height: 48px;
         }
-
-        .text-type-label {
-          font-size: 12px;
-          color: var(--text-muted);
-          white-space: nowrap;
+        
+        .primary-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
         }
-
-        .text-type-dropdown {
+        
+        .primary-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        
+        .secondary-btn {
           flex: 1;
-        }
-
-        .text-type-trigger {
-          font-size: 13px;
-          padding: 6px 10px;
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: var(--radius-sm);
-          border: 1px solid var(--border-subtle);
-        }
-
-        .text-type-trigger:hover {
           background: rgba(255, 255, 255, 0.1);
-          border-color: var(--border-bright);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: white;
+          padding: 14px 20px;
+          border-radius: 10px;
+          font-weight: 500;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 48px;
+        }
+        
+        .secondary-btn:hover {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(255, 255, 255, 0.25);
+          transform: translateY(-2px);
         }
 
-        .text-type-trigger.low-confidence {
-          border-color: rgba(234, 179, 8, 0.5);
-          background: rgba(234, 179, 8, 0.1);
-        }
-
-        .text-type-trigger.low-confidence:hover {
-          border-color: rgba(234, 179, 8, 0.8);
-          background: rgba(234, 179, 8, 0.15);
-        }
-
-        .text-type-menu {
-          max-height: 300px;
-          overflow-y: auto;
-          z-index: 1000;
+        /* Text Type Selector Styles */
+        .text-type-badge {
+          display: inline-flex;
+          align-items: center;
           position: relative;
         }
 
-        .dropdown-header {
-          padding: 8px 12px;
+        .text-type-badge .text-type-trigger {
           font-size: 11px;
-          color: var(--text-muted);
+          padding: 3px 8px;
+          background: rgba(255, 255, 255, 0.08);
+          border-radius: 4px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          cursor: pointer;
           display: flex;
-          justify-content: space-between;
           align-items: center;
+          gap: 4px;
         }
 
-        .confidence-hint {
-          font-size: 10px;
-          color: var(--text-secondary);
-          font-style: italic;
+        .text-type-badge .text-type-trigger:hover {
+          background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.2);
         }
 
-        .override-hint {
-          font-size: 10px;
-          color: #22c55e;
-          font-weight: 500;
+        .text-type-badge .text-type-dropdown {
+          position: relative;
         }
 
-        .text-type-trigger.user-override {
-          border-color: rgba(34, 197, 94, 0.5);
-          background: rgba(34, 197, 94, 0.1);
-        }
-
-        .text-type-trigger.user-override:hover {
-          border-color: rgba(34, 197, 94, 0.8);
-          background: rgba(34, 197, 94, 0.15);
+        .text-type-badge .text-type-menu {
+          position: absolute;
+          top: calc(100% + 6px);
+          left: 0;
+          width: 220px;
+          background: rgba(30, 30, 45, 0.99);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+          z-index: 10000;
         }
       `}</style>
     </div>

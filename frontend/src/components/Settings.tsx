@@ -67,7 +67,7 @@ function Settings({
   useEffect(() => {
     loadAvailableModels()
     loadSettingsData()
-    runtime.WindowSetSize(580, 820)
+    runtime.WindowSetSize(500, 650)
     runtime.WindowCenter()
     runtime.WindowShow()
   }, [])
@@ -234,11 +234,8 @@ function Settings({
 
   return (
     <div className="settings">
-      <div className="settings-header">
-        <div className="logo-container">
-          <img src={logoImage} alt="App Logo" className="app-logo" />
-        </div>
-        <h2><span>⚙️</span> Settings</h2>
+      <div className="settings-header compact">
+        <h2><span className="header-icon">⚙️</span> Settings</h2>
       </div>
 
       <form onSubmit={handleSubmit} className="settings-form">
