@@ -394,15 +394,54 @@ function Popup({
 
   const handleCopy = async () => {
     if (!result) return
+    
+    // Detect content type for smart formatting
+    const isEmail = result.match(/^(Dear\s|Hi\s|Hello\s|To\s)/i) &&
+      result.match(/(Regards|Sincerely|Thanks|Best|Warm regards|Kind regards|Yours|Cheers)/i)
+    
+    const isList = result.match(/^([-•\*]|\d+\.)\s/m)
+    const isChat = result.match(/^(User|Assistant|Me|You|Bot|System|Agent):/im)
+    
     try {
-      // Use the backend clipboard manager instead of browser clipboard
+      // Try to copy with proper HTML formatting
+      let html = ''
+      
+      if (isEmail) {
+        html = generateEmailHtml(result)
+      } else if (isList) {
+        html = generateListHtml(result)
+      } else if (isChat) {
+        html = generateChatHtml(result)
+      } else {
+        html = generateDocumentHtml(result)
+      }
+      
+      // Try clipboard API with HTML support
+      if (navigator.clipboard?.write) {
+        try {
+          const blob = new Blob([html], { type: 'text/html' })
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'text/html': blob,
+              'text/plain': new Blob([result], { type: 'text/plain' })
+            })
+          ])
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+          return
+        } catch (e) {
+          console.debug('HTML clipboard write failed, trying plain text:', e)
+        }
+      }
+      
+      // Fallback: use backend clipboard manager
       // @ts-ignore
       await window.go.main.App.ApplyRewrite(result)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy:', err)
-      // Fallback to browser clipboard
+      // Final fallback
       try {
         await navigator.clipboard.writeText(result)
         setCopied(true)
@@ -411,6 +450,165 @@ function Popup({
         console.error('Fallback copy also failed:', e)
       }
     }
+  }
+
+  // Helper function to generate Outlook-compatible HTML
+  const generateEmailHtml = (emailText: string): string => {
+    const paragraphs = emailText.split(/\n\n+/)
+    
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif; line-height: 1.8; color: #333; }
+    .email-greeting { margin-bottom: 20px; font-weight: 600; font-size: 14px; }
+    .email-body { margin: 16px 0; font-size: 13px; line-height: 1.8; }
+    .email-closing { margin-top: 24px; padding-top: 20px; border-top: 2px solid #ddd; font-size: 13px; }
+    .email-signature { margin-top: 16px; padding: 12px 0 12px 12px; font-size: 12px; border-left: 3px solid #ccc; line-height: 1.6; }
+    strong { color: #0066cc; font-weight: 700; background-color: #f0f4ff; padding: 2px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>`
+    
+    let isFirstPara = true
+    let hasClosing = false
+    
+    for (const para of paragraphs) {
+      const trimmed = para.trim()
+      if (!trimmed) continue
+      
+      const htmlPara = trimmed
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>')
+      
+      if (trimmed.match(/^(Dear\s|Hi\s|Hello\s|To\s)/i) && isFirstPara) {
+        html += `<div class="email-greeting">${htmlPara}</div>`
+      } else if (trimmed.match(/(Regards|Sincerely|Thanks|Best|Warm regards|Kind regards|Yours|Cheers)/i) && trimmed.length < 120) {
+        html += `<div class="email-closing"><div>${htmlPara}</div></div>`
+        hasClosing = true
+      } else if (hasClosing && trimmed.length < 100) {
+        html += `<div class="email-signature">${htmlPara}</div>`
+      } else {
+        html += `<div class="email-body"><p>${htmlPara}</p></div>`
+      }
+      
+      isFirstPara = false
+    }
+    
+    html += `</body>
+</html>`
+    
+    return html
+  }
+
+  // Helper function to generate HTML for lists
+  const generateListHtml = (listText: string): string => {
+    const lines = listText.split('\n')
+    const isNumbered = lines.some(line => line.trim().match(/^\d+\./))
+    
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif; line-height: 1.8; color: #333; }
+    ul, ol { margin: 12px 0; padding-left: 24px; }
+    li { margin: 8px 0; line-height: 1.7; }
+    strong { color: #0066cc; font-weight: 700; background-color: #f0f4ff; padding: 2px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<${isNumbered ? 'ol' : 'ul'}>`
+    
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      
+      const content = trimmed.replace(/^([-•\*]|\d+\.)\s*/, '')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      
+      html += `<li>${content}</li>`
+    }
+    
+    html += `</${isNumbered ? 'ol' : 'ul'}>
+</body>
+</html>`
+    
+    return html
+  }
+
+  // Helper function to generate HTML for chat
+  const generateChatHtml = (chatText: string): string => {
+    const lines = chatText.split('\n')
+    
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif; line-height: 1.8; color: #333; background: #f5f5f5; }
+    .message { margin: 10px 0; padding: 12px; border-radius: 8px; background: white; border-left: 4px solid #0066cc; }
+    .message.user { border-left-color: #22c55e; background: #f0fdf4; }
+    .sender { font-weight: 700; color: #0066cc; margin-bottom: 4px; font-size: 12px; }
+    .message.user .sender { color: #22c55e; }
+    .content { color: #333; line-height: 1.6; }
+    strong { color: #0066cc; font-weight: 700; background-color: #f0f4ff; padding: 2px 4px; border-radius: 2px; }
+  </style>
+</head>
+<body>`
+    
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      
+      const messageMatch = trimmed.match(/^(User|Assistant|Me|You|Bot|System|Agent):\s*(.*)$/i)
+      if (messageMatch) {
+        const sender = messageMatch[1]
+        const content = messageMatch[2]
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        
+        const isUser = /^(User|Me|You)/i.test(sender)
+        html += `<div class="message ${isUser ? 'user' : ''}"><div class="sender">${sender}</div><div class="content">${content}</div></div>`
+      }
+    }
+    
+    html += `</body>
+</html>`
+    
+    return html
+  }
+
+  // Helper function to generate HTML for general documents
+  const generateDocumentHtml = (docText: string): string => {
+    const paragraphs = docText.split(/\n\n+/)
+    
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif; line-height: 1.8; color: #333; }
+    p { margin: 12px 0; line-height: 1.8; }
+    strong { color: #0066cc; font-weight: 700; background-color: #f0f4ff; padding: 2px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>`
+    
+    for (const para of paragraphs) {
+      const trimmed = para.trim()
+      if (!trimmed) continue
+      
+      const htmlPara = trimmed.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      html += `<p>${htmlPara}</p>`
+    }
+    
+    html += `</body>
+</html>`
+    
+    return html
+    
+    return html
   }
 
   const handleReplace = async () => {
@@ -506,6 +704,82 @@ function Popup({
     // Check if this is a bullet list (for bullets analysis style)
     const lines = cleanText.split('\n')
     const isBulletList = lines.some(line => line.trim().match(/^[-•\*]\s/))
+    const isNumberedList = lines.some(line => line.trim().match(/^\d+\.\s/))
+
+    // Check if this looks like a document with lists
+    if ((isBulletList || isNumberedList) && !mainMode) {
+      // Render as professional document list
+      return (
+        <div className="document-container">
+          <ul className={`document-list ${isNumberedList ? 'numbered' : ''}`}>
+            {lines.map((line, i) => {
+              const trimmed = line.trim()
+              if (!trimmed) return null
+              // Remove bullet/number markers
+              const content = trimmed.replace(/^([-•\*]|\d+\.)\s*/, '')
+              // Handle bold text
+              const parts = content.split(/(\*\*[^*]+\*\*)/g)
+              return (
+                <li key={i}>
+                  {parts.map((part, j) => {
+                    if (part && part.startsWith('**') && part.endsWith('**')) {
+                      return <strong key={j}>{part.slice(2, -2)}</strong>
+                    }
+                    return part
+                  })}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )
+    }
+
+    // Check if this looks like a chat conversation
+    const isChatLike = lines.some(line => line.trim().match(/^(User|Assistant|Me|You|Bot|System|Agent):/i))
+    
+    if (isChatLike && selectedTextType === 'chat') {
+      // Render as chat conversation
+      return (
+        <div className="chat-container">
+          {lines.map((line, i) => {
+            const trimmed = line.trim()
+            if (!trimmed) return null
+            
+            const messageMatch = trimmed.match(/^(User|Assistant|Me|You|Bot|System|Agent):\s*(.*)$/i)
+            if (messageMatch) {
+              const sender = messageMatch[1]
+              const content = messageMatch[2]
+              const isUser = /^(User|Me|You)/i.test(sender)
+              
+              const parts = content.split(/(\*\*[^*]+\*\*)/g)
+              return (
+                <div key={i} className={`chat-message ${isUser ? 'user' : 'system'}`}>
+                  <div className="chat-header">
+                    <span className="chat-sender">{sender}</span>
+                    <span className="chat-timestamp">{new Date().toLocaleTimeString()}</span>
+                  </div>
+                  <div className="chat-content">
+                    {parts.map((part, j) => {
+                      if (part && part.startsWith('**') && part.endsWith('**')) {
+                        return <strong key={j}>{part.slice(2, -2)}</strong>
+                      }
+                      return part
+                    })}
+                  </div>
+                </div>
+              )
+            }
+            
+            return (
+              <div key={i} className="chat-message system">
+                <div className="chat-content">{trimmed}</div>
+              </div>
+            )
+          })}
+        </div>
+      )
+    }
 
     if (isBulletList && mainMode === 'analyze' && analysisStyle === 'bullets') {
       // Render as actual bullet list
@@ -535,30 +809,155 @@ function Popup({
 
     // Check if this looks like an email (has greeting and signature)
     const isEmail = cleanText.match(/^(Dear\s|Hi\s|Hello\s|To\s)/i) &&
-      cleanText.match(/(Regards|Sincerely|Thanks|Best)/i)
+      cleanText.match(/(Regards|Sincerely|Thanks|Best|Warm regards|Kind regards|Yours|Cheers)/i)
 
     if (isEmail) {
-      // Format email with better structure
-      return cleanText.split(/\n\n+/).map((para, i) => {
-        // Match **text** patterns
-        const parts = para.split(/(\*\*[^*]+\*\*)/g)
-        const isGreeting = para.match(/^(Dear\s|Hi\s|Hello\s|To\s)/i)
-        const isClosing = para.match(/(Regards|Sincerely|Thanks|Best)/i) && para.length < 100
+      // Parse email structure
+      const paragraphs = cleanText.split(/\n\n+/)
+      const emailParts: { type: string; content: string }[] = []
+      
+      let currentIndex = 0
+      
+      // Process each paragraph
+      for (const para of paragraphs) {
+        const trimmed = para.trim()
+        
+        if (!trimmed) continue
+        
+        // Check if greeting
+        if (trimmed.match(/^(Dear\s|Hi\s|Hello\s|To\s)/i) && currentIndex === 0) {
+          emailParts.push({ type: 'greeting', content: trimmed })
+        } 
+        // Check if closing/signature
+        else if (trimmed.match(/(Regards|Sincerely|Thanks|Best|Warm regards|Kind regards|Yours|Cheers)/i) && trimmed.length < 120) {
+          emailParts.push({ type: 'closing', content: trimmed })
+        }
+        // Check if signature block (after closing, usually shorter lines)
+        else if (emailParts.some(p => p.type === 'closing') && trimmed.length < 100 && !trimmed.match(/[.!?]\s/)) {
+          emailParts.push({ type: 'signature', content: trimmed })
+        }
+        // Body content
+        else {
+          emailParts.push({ type: 'body', content: trimmed })
+        }
+        
+        currentIndex++
+      }
 
-        return (
-          <p
-            key={i}
-            className={`${isGreeting ? 'email-greeting' : ''} ${isClosing ? 'email-closing' : ''}`}
-          >
-            {parts.map((part, j) => {
-              if (part && part.startsWith('**') && part.endsWith('**')) {
-                return <strong key={j} className="highlight-bold">{part.slice(2, -2)}</strong>
-              }
-              return part
-            })}
-          </p>
-        )
-      })
+      // Render email with professional structure and Outlook-compatible inline styles
+      return (
+        <div className="email-container" style={{ fontFamily: "'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif", lineHeight: '1.8' }}>
+          {emailParts.map((part, i) => {
+            const partContent = part.content.split(/(\*\*[^*]+\*\*)/g)
+            
+            const renderPart = (
+              <>
+                {partContent.map((segment, j) => {
+                  if (segment && segment.startsWith('**') && segment.endsWith('**')) {
+                    return (
+                      <strong 
+                        key={j}
+                        style={{
+                          color: '#0066cc',
+                          fontWeight: '700',
+                          backgroundColor: 'rgba(0, 102, 204, 0.1)',
+                          padding: '2px 6px',
+                          borderRadius: '3px',
+                          letterSpacing: '0.2px'
+                        }}
+                      >
+                        {segment.slice(2, -2)}
+                      </strong>
+                    )
+                  }
+                  return segment
+                })}
+              </>
+            )
+
+            switch (part.type) {
+              case 'greeting':
+                return (
+                  <div 
+                    key={i} 
+                    className="email-greeting"
+                    style={{
+                      marginBottom: '20px',
+                      fontWeight: '600',
+                      fontSize: '14px',
+                      color: 'rgba(255, 255, 255, 0.95)',
+                      letterSpacing: '0.3px'
+                    }}
+                  >
+                    {renderPart}
+                  </div>
+                )
+              case 'body':
+                return (
+                  <div 
+                    key={i} 
+                    className="email-body"
+                    style={{
+                      margin: '16px 0',
+                      fontSize: '13px',
+                      lineHeight: '1.8',
+                      color: 'rgba(255, 255, 255, 0.95)'
+                    }}
+                  >
+                    <p style={{ margin: '12px 0', padding: '0' }}>{renderPart}</p>
+                  </div>
+                )
+              case 'closing':
+                return (
+                  <div 
+                    key={i} 
+                    className="email-closing"
+                    style={{
+                      marginTop: '24px',
+                      paddingTop: '20px',
+                      borderTop: '2px solid rgba(99, 102, 241, 0.2)',
+                      fontSize: '13px',
+                      color: 'rgba(255, 255, 255, 0.95)'
+                    }}
+                  >
+                    <div 
+                      className="email-closing-text"
+                      style={{
+                        marginBottom: '12px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      {renderPart}
+                    </div>
+                  </div>
+                )
+              case 'signature':
+                return (
+                  <div 
+                    key={i} 
+                    className="email-signature"
+                    style={{
+                      marginTop: '16px',
+                      padding: '12px 0 12px 12px',
+                      fontSize: '12px',
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      borderLeft: '3px solid rgba(99, 102, 241, 0.4)',
+                      lineHeight: '1.6'
+                    }}
+                  >
+                    {renderPart}
+                  </div>
+                )
+              default:
+                return (
+                  <p key={i} style={{ margin: '12px 0', padding: '0' }}>
+                    {renderPart}
+                  </p>
+                )
+            }
+          })}
+        </div>
+      )
     }
 
     // Split by paragraphs for normal content
@@ -809,15 +1208,46 @@ function Popup({
               <button className="secondary-btn" onClick={() => generate(mainMode, mainMode === 'analyze' ? analysisStyle : rewriteStyle, shouldUseTextType())}>Retry Connection</button>
             </div>
           ) : (
-            <div className="result-text markdown-content" onClick={() => onSelect(result)}>
+            <div 
+              className="result-text markdown-content" 
+              onClick={handleCopy}
+              title="Click to copy with proper formatting"
+              style={{ cursor: 'pointer' }}
+            >
               {renderContent(result)}
             </div>
           )}
         </div>
+
+        {/* History Panel */}
+        {resultHistory.length > 0 && (
+          <div className="history-panel">
+            <div className="history-title">📜 Recent Changes</div>
+            <div className="history-list">
+              {resultHistory.map((item, i) => (
+                <div
+                  key={i}
+                  className={`history-item ${i === historyIndex ? 'active' : ''}`}
+                  onClick={() => setHistoryIndex(i)}
+                >
+                  <div className="history-item-content">
+                    <div className="history-item-style">{item.style}</div>
+                    <div className="history-item-preview">{item.text.substring(0, 40)}...</div>
+                  </div>
+                  <div className="history-item-time">{new Date(item.timestamp).toLocaleTimeString()}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="modern-footer">
-        <button className="secondary-btn" onClick={handleCopy}>
+        <button 
+          className="secondary-btn" 
+          onClick={handleCopy}
+          title="Copy with formatting (works great with Outlook!)"
+        >
           {copied ? '✓ Copied' : '📋 Copy'}
         </button>
         <button

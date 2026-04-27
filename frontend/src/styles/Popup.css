@@ -318,6 +318,10 @@
   white-space: normal;
 }
 
+.result-text.email-container {
+  padding: 12px 8px;
+}
+
 .markdown-content p {
   margin: 0 0 12px 0;
 }
@@ -372,24 +376,176 @@
 }
 
 .highlight-bold {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
-  padding: 2px 5px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.12));
+  padding: 2px 6px;
   border-radius: 3px;
-  font-weight: 500;
+  font-weight: 600;
+  color: #a8e6ff;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.15);
+  letter-spacing: 0.2px;
 }
 
-/* Email Formatting */
+/* Email Formatting - Professional & Visually Appealing */
+.email-container {
+  font-family: 'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif;
+  line-height: 1.8;
+}
+
 .email-greeting {
-  margin-bottom: 14px;
-  font-weight: 500;
+  margin-bottom: 20px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.email-body {
+  margin: 16px 0;
   font-size: 13px;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.email-body p {
+  margin: 12px 0;
+  padding: 0;
+}
+
+.email-body p:first-child {
+  margin-top: 0;
+}
+
+.email-body p:last-child {
+  margin-bottom: 0;
 }
 
 .email-closing {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 2px solid rgba(99, 102, 241, 0.2);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.email-closing-text {
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.email-signature {
   margin-top: 16px;
-  font-style: italic;
-  color: var(--text-secondary);
+  padding: 12px 0;
   font-size: 12px;
+  color: var(--text-secondary);
+  border-left: 3px solid rgba(99, 102, 241, 0.4);
+  padding-left: 12px;
+  line-height: 1.6;
+}
+
+.email-signature strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Email Keywords and Emphasis */
+.email-greeting strong,
+.email-closing strong,
+.email-signature strong {
+  color: #63f6ff;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(34, 211, 238, 0.15));
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.email-body strong {
+  color: #a8e6ff;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(96, 165, 250, 0.15));
+  padding: 2px 6px;
+  border-radius: 3px;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+}
+
+/* Email List Items (if present) */
+.email-body ul,
+.email-body ol {
+  margin: 14px 0;
+  padding-left: 24px;
+}
+
+.email-body li {
+  margin: 8px 0;
+  line-height: 1.7;
+}
+
+.email-body li strong {
+  color: #a8e6ff;
+}
+
+/* Email Header Styling (metadata) */
+.email-header {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+  border-left: 4px solid var(--brand-primary);
+  padding: 12px 14px;
+  margin: 0 -18px 16px -18px;
+  border-radius: 4px 0 0 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Email Link Styling */
+.email-body a,
+.email-closing a {
+  color: #60a5fa;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(96, 165, 250, 0.3);
+  transition: all 0.2s ease;
+}
+
+.email-body a:hover,
+.email-closing a:hover {
+  color: #93c5fd;
+  border-bottom: 1px solid rgba(96, 165, 250, 0.6);
+}
+
+/* Professional Spacing & Typography */
+.email-greeting p {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+
+/* Call-to-action in emails */
+.email-body .cta,
+.email-cta-section {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin: 16px 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Quote/Reference in emails */
+.email-quote {
+  border-left: 4px solid var(--brand-primary);
+  margin: 12px 0;
+  padding-left: 14px;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.email-quote strong {
+  color: var(--text-primary);
+  font-style: normal;
 }
 
 /* Skeleton & Loading */
@@ -848,4 +1004,344 @@
   .formatting-toggle-container {
     order: 3;
   }
+}
+
+/* ============================================
+   NEW FEATURES: Chat, Lists, Previews, History
+   ============================================ */
+
+/* DOCUMENT TYPE BADGE */
+.doc-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #a8e6ff;
+}
+
+.doc-type-badge .icon {
+  font-size: 14px;
+}
+
+/* CHAT MESSAGE FORMATTING */
+.chat-container {
+  font-family: 'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif;
+  line-height: 1.6;
+}
+
+.chat-message {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid rgba(99, 102, 241, 0.3);
+}
+
+.chat-message.user {
+  border-left-color: rgba(34, 211, 238, 0.4);
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.08), rgba(99, 102, 241, 0.05));
+}
+
+.chat-message.system {
+  border-left-color: rgba(168, 85, 247, 0.4);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(139, 92, 246, 0.05));
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chat-sender {
+  color: #60a5fa;
+}
+
+.chat-timestamp {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.chat-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.chat-content strong {
+  color: #60a5fa;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.15), rgba(59, 130, 246, 0.1));
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* LIST & DOCUMENT FORMATTING */
+.document-container {
+  font-family: 'Segoe UI', 'Trebuchet MS', 'Roboto', sans-serif;
+}
+
+.document-list {
+  margin: 12px 0;
+  padding-left: 0;
+}
+
+.document-list li {
+  list-style: none;
+  position: relative;
+  margin: 10px 0;
+  padding-left: 24px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.document-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: #60a5fa;
+  font-weight: bold;
+}
+
+.document-list.numbered li::before {
+  content: counter(item);
+  counter-increment: item;
+  margin-right: 8px;
+  color: #a8e6ff;
+  font-weight: 700;
+}
+
+.document-list.numbered {
+  counter-reset: item;
+}
+
+.document-list li strong {
+  color: #a8e6ff;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(96, 165, 250, 0.1));
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.document-section {
+  margin: 16px 0;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+  border-left: 4px solid var(--brand-primary);
+  border-radius: 4px;
+}
+
+.document-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #a8e6ff;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* STYLE PREVIEW PANEL */
+.style-preview-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.style-preview-card {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  position: relative;
+}
+
+.style-preview-card:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+.style-preview-card.active {
+  border-color: var(--brand-primary);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+}
+
+.style-preview-card.active::after {
+  content: "✓";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a8e6ff;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.preview-sample {
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.7);
+  max-height: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* HISTORY PANEL */
+.history-panel {
+  background: rgba(15, 15, 25, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.history-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a8e6ff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(99, 102, 241, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.history-item:hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.history-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-item-style {
+  font-size: 11px;
+  font-weight: 600;
+  color: #60a5fa;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.history-item-preview {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-item-time {
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.history-item.active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
+  border-color: var(--brand-primary);
+}
+
+/* STYLE COMPARISON TABLE */
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.comparison-cell {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.comparison-cell-label {
+  font-weight: 700;
+  color: #a8e6ff;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+
+.comparison-cell-content {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-state-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.6;
+}
+
+.empty-state-text {
+  font-size: 12px;
+  line-height: 1.4;
 }
