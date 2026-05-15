@@ -1,4 +1,25 @@
-build/bin
-node_modules
-frontend/dist
-opencode.exe
+# Claw Code local artifacts
+.claw/settings.local.json
+.claw/sessions/
+.clawhip/
+
+# Build artifacts
+build/bin/
+frontend/dist/
+frontend/node_modules/
+
+# Backups and patches
+*.bak
+*.backup
+*.backup2
+*.orig
+*.rej
+*.clean
+
+# Binaries
+*.exe
+
+# Workspace / planning files
+PLAN.md
+TODO.md
+graphify_skill.yaml

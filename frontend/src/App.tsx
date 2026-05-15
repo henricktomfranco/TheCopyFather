@@ -3,43 +3,27 @@ import Popup from './components/Popup'
 import Settings from './components/Settings'
 import Welcome from './components/Welcome'
 import MiniMode from './components/MiniMode'
+import DiffView from './components/DiffView'
 import * as runtime from '../wailsjs/runtime'
+import * as AppAPI from '../wailsjs/go/main/App'
+import { config as configModels, rewriter as rewriterModels } from '../wailsjs/go/models'
 import './styles/main.css'
 
-export type View = 'popup' | 'settings' | 'welcome' | 'mini'
+export type View = 'popup' | 'settings' | 'welcome' | 'mini' | 'diff'
 
-export interface RewriteOption {
-  style: string
-  text: string
-  error?: string
-}
-
-export interface Config {
-  server_url: string
-  model: string
-  api_key?: string
-  default_style: string
-  auto_start: boolean
-  hotkey: string
-  monitor_clipboard: boolean
-  first_run: boolean
-  auto_paste_mode?: string
-  popup_position_mode?: string
-  custom_prompts?: Record<string, Record<string, string>>
-  mini_mode?: boolean
-}
+export type Config = configModels.Config
 
 export interface TextTypeInfo {
-  type: string
-  label: string
-  icon: string
-  description: string
+  Type: string
+  Label: string
+  Icon: string
+  Description: string
 }
 
 export interface StyleInfo {
-  label: string
-  icon: string
-  description: string
+  Label: string
+  Icon: string
+  Description: string
 }
 
 function App() {
@@ -49,6 +33,8 @@ function App() {
   const [settings, setSettings] = useState<Config | null>(null)
   const [miniModeResult, setMiniModeResult] = useState<string>('')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [diffOriginal, setDiffOriginal] = useState('')
+  const [diffRewritten, setDiffRewritten] = useState('')
 
   useEffect(() => {
     // Listen for text selection event from backend
@@ -58,17 +44,14 @@ function App() {
       setSelectionTrigger(prev => prev + 1)
       setMiniModeResult('')
       
-      // Read mini_mode setting directly from backend
       try {
-        // @ts-ignore
-        const config = await window.go.main.App.GetSettings()
+        const config = await AppAPI.GetSettings()
         const useMini = config?.mini_mode ?? false
         setCurrentView(prev => {
           if (prev === 'welcome') return 'welcome'
           return useMini ? 'mini' : 'popup'
         })
       } catch (e) {
-        // Fallback to popup if settings can't be read
         setCurrentView('popup')
       }
     })
@@ -90,8 +73,7 @@ function App() {
 
   const loadSettings = async () => {
     try {
-      // @ts-ignore
-      const config = await window.go.main.App.GetSettings()
+      const config = await AppAPI.GetSettings()
       setSettings(config)
       if (config.first_run) {
         setCurrentView('welcome')
@@ -103,8 +85,7 @@ function App() {
 
   const handleSelectRewrite = async (text: string) => {
     try {
-      // @ts-ignore
-      await window.go.main.App.ApplyRewrite(text)
+      await AppAPI.ApplyRewrite(text)
       runtime.WindowHide()
     } catch (error) {
       console.error('Failed to apply rewrite:', error)
@@ -113,8 +94,7 @@ function App() {
 
 const handleSaveSettings = async (newSettings: Config) => {
     try {
-      // @ts-ignore
-      await window.go.main.App.SaveSettings(newSettings)
+      await AppAPI.SaveSettings(newSettings)
       setSettings(newSettings)
       if (selectedText) {
         setCurrentView('popup')
@@ -126,8 +106,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const loadCustomPrompts = async (): Promise<Record<string, Record<string, string>>> => {
     try {
-      // @ts-ignore
-      const prompts = await window.go.main.App.GetAllCustomPrompts()
+      const prompts = await AppAPI.GetAllCustomPrompts()
       return prompts || {}
     } catch (error) {
       console.error('Failed to load custom prompts:', error)
@@ -137,8 +116,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const saveCustomPrompt = async (style: string, textType: string, prompt: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      // @ts-ignore
-      await window.go.main.App.SetCustomPrompt(style, textType, prompt)
+      await AppAPI.SetCustomPrompt(style, textType, prompt)
       return { success: true }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to save custom prompt'
@@ -149,8 +127,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const deleteCustomPrompt = async (style: string, textType: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      // @ts-ignore
-      await window.go.main.App.DeleteCustomPrompt(style, textType)
+      await AppAPI.DeleteCustomPrompt(style, textType)
       return { success: true }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to delete custom prompt'
@@ -159,10 +136,20 @@ const handleSaveSettings = async (newSettings: Config) => {
     }
   }
 
+  const resetAllCustomPrompts = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await AppAPI.ResetAllCustomPrompts()
+      return { success: true }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to reset all prompts'
+      console.error('Failed to reset all prompts:', error)
+      return { success: false, error: errorMsg }
+    }
+  }
+
   const getDefaultPrompt = async (style: string, textType: string): Promise<string> => {
     try {
-      // @ts-ignore
-      const prompt = await window.go.main.App.GetDefaultPrompt(style, textType)
+      const prompt = await AppAPI.GetDefaultPrompt(style, textType)
       return prompt
     } catch (error) {
       console.error('Failed to get default prompt:', error)
@@ -172,8 +159,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const loadRewriteStyles = async (): Promise<string[]> => {
     try {
-      // @ts-ignore
-      const styles = await window.go.main.App.GetRewriteStyles()
+      const styles = await AppAPI.GetRewriteStyles()
       return styles || []
     } catch (error) {
       console.error('Failed to load rewrite styles:', error)
@@ -183,8 +169,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const loadAnalysisStyles = async (): Promise<string[]> => {
     try {
-      // @ts-ignore
-      const styles = await window.go.main.App.GetAnalysisStyles()
+      const styles = await AppAPI.GetAnalysisStyles()
       return styles || []
     } catch (error) {
       console.error('Failed to load analysis styles:', error)
@@ -192,10 +177,9 @@ const handleSaveSettings = async (newSettings: Config) => {
     }
   }
 
-  const loadTextTypes = async (): Promise<TextTypeInfo[]> => {
+  const loadTextTypes = async (): Promise<rewriterModels.TextTypeInfo[]> => {
     try {
-      // @ts-ignore
-      const types = await window.go.main.App.GetTextTypes()
+      const types = await AppAPI.GetTextTypes()
       return types || []
     } catch (error) {
       console.error('Failed to load text types:', error)
@@ -226,19 +210,24 @@ const handleSaveSettings = async (newSettings: Config) => {
     if (!selectedText) return
     setIsGenerating(true)
     try {
-      // @ts-ignore
-      const result = await window.go.main.App.RetryRewriteWithFormatting(selectedText, style, true)
+      const result = await AppAPI.RetryRewriteWithFormatting(selectedText, style, true)
       if (result.text) {
         setMiniModeResult(result.text)
-        // Auto-copy to clipboard
-        // @ts-ignore
-        await window.go.main.App.ApplyRewrite(result.text)
+        await AppAPI.ApplyRewrite(result.text)
       }
     } catch (error) {
       console.error('Mini mode rewrite failed:', error)
     }
     setIsGenerating(false)
   }
+
+  const handleShowDiff = (original: string, rewritten: string) => {
+    setDiffOriginal(original)
+    setDiffRewritten(rewritten)
+    setCurrentView('diff')
+  }
+
+  const [lastResult, setLastResult] = useState('')
 
   const rewriteStylesList = [
     { value: 'grammar', label: 'Grammar', icon: '🛡️' },
@@ -279,8 +268,10 @@ const handleSaveSettings = async (newSettings: Config) => {
           onSelect={handleSelectRewrite}
           onClose={handleClose}
           onSettings={handleOpenSettings}
+          onShowDiff={(rewritten) => handleShowDiff(selectedText, rewritten)}
           defaultStyle={settings.default_style}
           miniModeResult={miniModeResult}
+          onResultChange={setLastResult}
         />
       )}
 
@@ -298,10 +289,19 @@ const handleSaveSettings = async (newSettings: Config) => {
           onLoadCustomPrompts={loadCustomPrompts}
           onSaveCustomPrompt={saveCustomPrompt}
           onDeleteCustomPrompt={deleteCustomPrompt}
+          onResetAllCustomPrompts={resetAllCustomPrompts}
           onGetDefaultPrompt={getDefaultPrompt}
           onLoadRewriteStyles={loadRewriteStyles}
           onLoadAnalysisStyles={loadAnalysisStyles}
           onLoadTextTypes={loadTextTypes}
+        />
+      )}
+
+      {currentView === 'diff' && (
+        <DiffView
+          originalText={diffOriginal}
+          rewrittenText={diffRewritten}
+          onClose={() => setCurrentView(selectedText ? 'popup' : 'settings')}
         />
       )}
     </div>

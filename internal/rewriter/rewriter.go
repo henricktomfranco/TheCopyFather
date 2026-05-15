@@ -6,12 +6,28 @@ import (
 	"strings"
 	"textrewriter/internal/config"
 	"textrewriter/internal/ollama"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
+
+// ToneAnalysis represents the result of tone/readability analysis
+type ToneAnalysis struct {
+	Tone            string  `json:"tone"`
+	ToneLabel       string  `json:"tone_label"`
+	ReadingLevel    string  `json:"reading_level"`
+	WordCount       int     `json:"word_count"`
+	SentenceCount   int     `json:"sentence_count"`
+	AvgWordLength   float64 `json:"avg_word_length"`
+	AvgSentenceLen  float64 `json:"avg_sentence_len"`
+	FleschScore     float64 `json:"flesch_score"`
+	LongestWord     string  `json:"longest_word"`
+}
 
 // Rewriter handles text rewriting operations
 type Rewriter struct {
 	client *ollama.Client
 	config *config.Config
+	dmp    *diffmatchpatch.DiffMatchPatch
 }
 
 // RewriteOption represents a single rewrite option
@@ -19,6 +35,38 @@ type RewriteOption struct {
 	Style string `json:"style"`
 	Text  string `json:"text"`
 	Error string `json:"error,omitempty"`
+}
+
+// DiffResult represents the result of a diff operation
+type DiffResult struct {
+	Diffs     []diffmatchpatch.Diff `json:"diffs"`
+	HTML      string                `json:"html"`
+	HasDiff   bool                  `json:"has_diff"`
+	Additions int                   `json:"additions"`
+	Deletions int                   `json:"deletions"`
+}
+
+// StyleInfoData contains metadata about a style
+type StyleInfoData struct {
+	Label       string `json:"label"`
+	Icon        string `json:"icon"`
+	Description string `json:"description"`
+}
+
+// TextTypeDetected contains the detected text type info
+type TextTypeDetected struct {
+	Type       string  `json:"type"`
+	Label      string  `json:"label"`
+	Icon       string  `json:"icon"`
+	Confidence float64 `json:"confidence"`
+}
+
+// StyleSuggestion represents a suggested style based on text analysis
+type StyleSuggestion struct {
+	DetectedType TextType  `json:"detected_type"`
+	SuggestedStyle string  `json:"suggested_style"`
+	Confidence    float64 `json:"confidence"`
+	Reason        string  `json:"reason"`
 }
 
 // RewriteStyles contains all available rewrite styles
@@ -41,23 +89,19 @@ var AnalysisStyles = []string{
 }
 
 // StyleInfo contains metadata about each style
-var StyleInfo = map[string]struct {
-	Label       string
-	Icon        string
-	Description string
-}{
-	"grammar":    {"Grammar & Spelling", "🛡️", "Corrects errors and improves flow"},
-	"paraphrase": {"Paraphrase", "🔄", "Rewrite with different structure"},
-	"standard":   {"Standard", "📝", "Balanced and natural"},
-	"formal":     {"Formal", "📢", "Professional tone"},
-	"casual":     {"Casual", "💬", "Conversational"},
-	"creative":   {"Creative", "✨", "Expressive and vivid"},
-	"short":      {"Short", "📏", "Concise and brief"},
-	"expand":     {"Expand", "📖", "More detail and depth"},
+var StyleInfo = map[string]StyleInfoData{
+	"grammar":    {Label: "Grammar & Spelling", Icon: "🛡️", Description: "Corrects errors and improves flow"},
+	"paraphrase": {Label: "Paraphrase", Icon: "🔄", Description: "Rewrite with different structure"},
+	"standard":   {Label: "Standard", Icon: "📝", Description: "Balanced and natural"},
+	"formal":     {Label: "Formal", Icon: "📢", Description: "Professional tone"},
+	"casual":     {Label: "Casual", Icon: "💬", Description: "Conversational"},
+	"creative":   {Label: "Creative", Icon: "✨", Description: "Expressive and vivid"},
+	"short":      {Label: "Short", Icon: "📏", Description: "Concise and brief"},
+	"expand":     {Label: "Expand", Icon: "📖", Description: "More detail and depth"},
 	// Analysis styles
-	"summarize": {"TL;DR Summary", "📋", "Concise 2-3 sentence summary"},
-	"bullets":   {"Key Points", "•••", "Extract 3-5 main bullet points"},
-	"insights":  {"Key Insights", "💡", "Important facts and arguments"},
+	"summarize": {Label: "TL;DR Summary", Icon: "📋", Description: "Concise 2-3 sentence summary"},
+	"bullets":   {Label: "Key Points", Icon: "•••", Description: "Extract 3-5 main bullet points"},
+	"insights":  {Label: "Key Insights", Icon: "💡", Description: "Important facts and arguments"},
 }
 
 // New creates a new Rewriter instance
@@ -65,7 +109,146 @@ func New(client *ollama.Client, cfg *config.Config) *Rewriter {
 	return &Rewriter{
 		client: client,
 		config: cfg,
+		dmp:    diffmatchpatch.New(),
 	}
+}
+
+// ComputeDiff computes the diff between original and rewritten text
+func (r *Rewriter) ComputeDiff(original, rewritten string) DiffResult {
+	diffs := r.dmp.DiffMain(original, rewritten, true)
+	r.dmp.DiffCleanupSemantic(diffs)
+
+	additions := 0
+	deletions := 0
+	for _, d := range diffs {
+		switch d.Type {
+		case diffmatchpatch.DiffInsert:
+			additions++
+		case diffmatchpatch.DiffDelete:
+			deletions++
+		}
+	}
+
+	html := r.dmp.DiffPrettyHtml(diffs)
+	hasDiff := additions > 0 || deletions > 0
+
+	return DiffResult{
+		Diffs:     diffs,
+		HTML:      html,
+		HasDiff:   hasDiff,
+		Additions: additions,
+		Deletions: deletions,
+	}
+}
+
+// AnalyzeTone performs local statistical analysis (no AI call needed)
+func AnalyzeTone(text string) ToneAnalysis {
+	words := strings.Fields(text)
+	wordCount := len(words)
+
+	sentences := strings.FieldsFunc(text, func(r rune) bool {
+		return r == '.' || r == '!' || r == '?'
+	})
+	sentenceCount := len(sentences)
+	if sentenceCount == 0 {
+		sentenceCount = 1
+	}
+
+	var totalWordLen int
+	var longestWord string
+	for _, w := range words {
+		clean := strings.Trim(w, ".,;:!?\"'()[]{}")
+		totalWordLen += len(clean)
+		if len(clean) > len(longestWord) {
+			longestWord = clean
+		}
+	}
+
+	avgWordLen := 0.0
+	if wordCount > 0 {
+		avgWordLen = float64(totalWordLen) / float64(wordCount)
+	}
+	avgSentenceLen := float64(wordCount) / float64(sentenceCount)
+
+	// Flesch Reading Ease approximation
+	fleschScore := 206.835 - (1.015 * avgSentenceLen) - (84.6 * avgWordLen)
+	if fleschScore < 0 {
+		fleschScore = 0
+	}
+	if fleschScore > 100 {
+		fleschScore = 100
+	}
+
+	// Reading level
+	var readingLevel string
+	switch {
+	case fleschScore >= 90:
+		readingLevel = "Very Easy (5th grade)"
+	case fleschScore >= 80:
+		readingLevel = "Easy (6th grade)"
+	case fleschScore >= 70:
+		readingLevel = "Fairly Easy (7th grade)"
+	case fleschScore >= 60:
+		readingLevel = "Standard (8th-9th grade)"
+	case fleschScore >= 50:
+		readingLevel = "Fairly Difficult (10th-12th grade)"
+	case fleschScore >= 30:
+		readingLevel = "Difficult (College)"
+	default:
+		readingLevel = "Very Difficult (College Graduate)"
+	}
+
+	// Tone detection (keyword-based)
+	tone, toneLabel := detectTone(strings.ToLower(text))
+
+	return ToneAnalysis{
+		Tone:           tone,
+		ToneLabel:      toneLabel,
+		ReadingLevel:   readingLevel,
+		WordCount:      wordCount,
+		SentenceCount:  sentenceCount,
+		AvgWordLength:  mathRound(avgWordLen, 1),
+		AvgSentenceLen: mathRound(avgSentenceLen, 1),
+		FleschScore:    mathRound(fleschScore, 1),
+		LongestWord:    longestWord,
+	}
+}
+
+func detectTone(text string) (string, string) {
+	formalWords := []string{"therefore", "furthermore", "consequently", "accordingly", "hereby", "therein", "notwithstanding", "pursuant"}
+	exclamationCount := strings.Count(text, "!")
+	questionCount := strings.Count(text, "?")
+
+	formalityScore := 0
+	for _, w := range formalWords {
+		formalityScore += strings.Count(text, w) * 3
+	}
+
+	// Check for casual markers
+	casual := strings.Contains(text, "lol") || strings.Contains(text, "omg") || strings.Contains(text, "btw") ||
+		strings.Contains(text, "haha") || strings.Contains(text, "yeah") || strings.Contains(text, "gonna") ||
+		strings.Contains(text, "wanna") || strings.Contains(text, "kinda")
+
+	switch {
+	case formalityScore >= 6:
+		return "formal", "Formal"
+	case exclamationCount >= 3 || casual:
+		return "casual", "Casual"
+	case questionCount >= 3:
+		return "inquisitive", "Inquisitive"
+	case strings.Count(text, "urgent") > 0 || strings.Count(text, "asap") > 0 || strings.Count(text, "immediately") > 0:
+		return "urgent", "Urgent"
+	default:
+		return "neutral", "Neutral"
+	}
+}
+
+func mathRound(val float64, decimals int) float64 {
+	pow := 1.0
+	for i := 0; i < decimals; i++ {
+		pow *= 10
+	}
+	return float64(int(val*pow+0.5)) / pow
 }
 
 // GenerateRewrites is deprecated. Use GenerateSingleRewrite or GenerateSingleRewriteWithFormatting instead.
@@ -665,12 +848,37 @@ func isValidAnalysisStyle(style string) bool {
 	return false
 }
 
+// GenerateStream generates a rewrite and streams the response
+func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-chan string, error) {
+	if !isValidStyle(style) {
+		return nil, fmt.Errorf("invalid style: %s", style)
+	}
+
+	systemPrompt := r.config.GetPrompt(style, "normal")
+	streamChan, err := r.client.GenerateStream(ctx, text, style, systemPrompt)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert ClientStreamResponse channel to string channel
+	outputChan := make(chan string, 100)
+	go func() {
+		defer close(outputChan)
+		for resp := range streamChan {
+			if resp.Error != nil {
+				// We can't send errors through the string channel, so we'll skip
+				// In a real implementation, you might want to handle this differently
+				continue
+			}
+			outputChan <- resp.Response
+		}
+	}()
+	
+	return outputChan, nil
+}
+
 // GetStyleInfo returns information about a specific style
-func GetStyleInfo(style string) (struct {
-	Label       string
-	Icon        string
-	Description string
-}, bool) {
+func GetStyleInfo(style string) (StyleInfoData, bool) {
 	info, ok := StyleInfo[style]
 	return info, ok
 }

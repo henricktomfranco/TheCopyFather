@@ -10,6 +10,10 @@ export function ApplyRewriteAndPaste(arg1) {
   return window['go']['main']['App']['ApplyRewriteAndPaste'](arg1);
 }
 
+export function ComputeDiff(arg1, arg2) {
+  return window['go']['main']['App']['ComputeDiff'](arg1, arg2);
+}
+
 export function DeleteCustomPrompt(arg1, arg2) {
   return window['go']['main']['App']['DeleteCustomPrompt'](arg1, arg2);
 }

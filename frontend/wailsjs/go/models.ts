@@ -37,8 +37,65 @@ export namespace config {
 
 }
 
+export namespace diffmatchpatch {
+	
+	export class Diff {
+	    Type: number;
+	    Text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Diff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Type = source["Type"];
+	        this.Text = source["Text"];
+	    }
+	}
+
+}
+
 export namespace rewriter {
 	
+	export class DiffResult {
+	    diffs: diffmatchpatch.Diff[];
+	    html: string;
+	    has_diff: boolean;
+	    additions: number;
+	    deletions: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiffResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.diffs = this.convertValues(source["diffs"], diffmatchpatch.Diff);
+	        this.html = source["html"];
+	        this.has_diff = source["has_diff"];
+	        this.additions = source["additions"];
+	        this.deletions = source["deletions"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RewriteOption {
 	    style: string;
 	    text: string;
@@ -55,40 +112,30 @@ export namespace rewriter {
 	        this.error = source["error"];
 	    }
 	}
-
-}
-
-export namespace struct { Label string; Icon string; Description string } {
-	
-	export class  {
-	    Label: string;
-	    Icon: string;
-	    Description: string;
+	export class StyleInfoData {
+	    label: string;
+	    icon: string;
+	    description: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new (source);
+	        return new StyleInfoData(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Label = source["Label"];
-	        this.Icon = source["Icon"];
-	        this.Description = source["Description"];
+	        this.label = source["label"];
+	        this.icon = source["icon"];
+	        this.description = source["description"];
 	    }
 	}
-
-}
-
-export namespace struct { Type string "json:\"type\""; Label string "json:\"label\""; Icon string "json:\"icon\""; Confidence float64 "json:\"confidence\"" } {
-	
-	export class  {
+	export class TextTypeDetected {
 	    type: string;
 	    label: string;
 	    icon: string;
 	    confidence: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new (source);
+	        return new TextTypeDetected(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -99,27 +146,22 @@ export namespace struct { Type string "json:\"type\""; Label string "json:\"labe
 	        this.confidence = source["confidence"];
 	    }
 	}
-
-}
-
-export namespace struct { Type string "json:\"type\""; Label string "json:\"label\""; Icon string "json:\"icon\""; Description string "json:\"description\"" } {
-	
-	export class  {
-	    type: string;
-	    label: string;
-	    icon: string;
-	    description: string;
+	export class TextTypeInfo {
+	    Type: string;
+	    Label: string;
+	    Icon: string;
+	    Description: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new (source);
+	        return new TextTypeInfo(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.type = source["type"];
-	        this.label = source["label"];
-	        this.icon = source["icon"];
-	        this.description = source["description"];
+	        this.Type = source["Type"];
+	        this.Label = source["Label"];
+	        this.Icon = source["Icon"];
+	        this.Description = source["Description"];
 	    }
 	}
 

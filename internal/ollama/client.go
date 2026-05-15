@@ -13,10 +13,10 @@ import (
 
 // Client handles communication with the Ollama API
 type Client struct {
-	baseURL    string
-	model      string
-	apiKey     string
-	version    string
+	baseURL string
+	model string
+	apiKey string
+	version string
 	httpClient *http.Client
 }
 
@@ -27,28 +27,28 @@ func NewClient(baseURL, model, apiKey string) *Client {
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &Client{
-		baseURL:    baseURL,
-		model:      model,
-		apiKey:     apiKey,
+		baseURL: baseURL,
+		model: model,
+		apiKey: apiKey,
 		httpClient: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
 // GenerateRequest represents the request body for the generate endpoint
 type GenerateRequest struct {
-	Model   string                 `json:"model"`
-	Prompt  string                 `json:"prompt"`
-	System  string                 `json:"system,omitempty"`
-	Stream  bool                   `json:"stream"`
+	Model string `json:"model"`
+	Prompt string `json:"prompt"`
+	System string `json:"system,omitempty"`
+	Stream bool `json:"stream"`
 	Options map[string]interface{} `json:"options,omitempty"`
 }
 
 // GenerateResponse represents the response from the generate endpoint
 type GenerateResponse struct {
-	Model    string `json:"model"`
+	Model string `json:"model"`
 	Response string `json:"response"`
-	Done     bool   `json:"done"`
-	Context  []int  `json:"context,omitempty"`
+	Done bool `json:"done"`
+	Context []int `json:"context,omitempty"`
 }
 
 // sanitizeInput escapes special XML characters to prevent prompt injection
@@ -158,6 +158,125 @@ func (c *Client) GenerateRewrite(ctx context.Context, text, style, systemPrompt 
 	return result.Response, nil
 }
 
+// ClientStreamResponse represents a single chunk from a streaming response
+type ClientStreamResponse struct {
+	Response string `json:"response"`
+	Done bool `json:"done"`
+	Error error `json:"error,omitempty"`
+}
+
+// GenerateStream generates a rewrite and streams the response chunk by chunk
+func (c *Client) GenerateStream(ctx context.Context, text, style, systemPrompt string) (<-chan ClientStreamResponse, error) {
+	// Validate text length
+	if len(text) > MaxTextLength {
+		return nil, fmt.Errorf("text too long: %d characters (max %d)", len(text), MaxTextLength)
+	}
+
+	// Sanitize the input text to prevent XML injection
+	sanitizedText := sanitizeInput(text)
+
+	// Wrap text in XML tags to clearly separate instructions from data
+	prompt := fmt.Sprintf("<input>\n%s\n</input>", sanitizedText)
+
+	// Build request with streaming enabled
+	reqBody := c.buildGenerateRequest(prompt, systemPrompt)
+	reqBody.Stream = true
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create channel for streaming responses
+	outputChan := make(chan ClientStreamResponse, 100)
+
+	go func() {
+		defer close(outputChan)
+
+		var lastErr error
+		for attempt := 0; attempt < MaxRetries; attempt++ {
+			if attempt > 0 {
+				delay := time.Duration(1<<uint(attempt-1)) * time.Second
+				select {
+				case <-ctx.Done():
+					outputChan <- ClientStreamResponse{Error: ctx.Err()}
+					return
+				case <-time.After(delay):
+				}
+			}
+
+			req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/generate", bytes.NewBuffer(jsonData))
+			if err != nil {
+				lastErr = fmt.Errorf("failed to create request: %w", err)
+				continue
+			}
+
+			req.Header.Set("Content-Type", "application/json")
+			if c.apiKey != "" {
+				req.Header.Set("Authorization", "Bearer "+c.apiKey)
+			}
+
+			resp, err := c.httpClient.Do(req)
+			if err != nil {
+				lastErr = fmt.Errorf("failed to connect to Ollama: %w", err)
+				continue
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				errStr := string(body)
+				if resp.StatusCode == http.StatusMethodNotAllowed {
+					lastErr = fmt.Errorf("ollama API error (status 405): Method Not Allowed. Hint: Check if your server URL is correct and use https if required. (URL: %s)", req.URL.String())
+				} else {
+					lastErr = fmt.Errorf("ollama API error (status %d): %s", resp.StatusCode, errStr)
+				}
+				// Don't retry on client errors (4xx)
+				if strings.Contains(lastErr.Error(), "status 4") {
+					outputChan <- ClientStreamResponse{Error: lastErr}
+					return
+				}
+				continue
+			}
+
+			// Process streaming response
+			decoder := json.NewDecoder(resp.Body)
+			for {
+				select {
+				case <-ctx.Done():
+					outputChan <- ClientStreamResponse{Error: ctx.Err()}
+					return
+				default:
+					var chunk GenerateResponse
+					if err := decoder.Decode(&chunk); err != nil {
+						if err == io.EOF {
+							return
+						}
+						outputChan <- ClientStreamResponse{Error: fmt.Errorf("failed to decode stream chunk: %w", err)}
+						return
+					}
+
+					outputChan <- ClientStreamResponse{
+						Response: chunk.Response,
+						Done: chunk.Done,
+					}
+
+					if chunk.Done {
+						return
+					}
+				}
+			}
+		}
+
+		// If we exhausted retries
+		if lastErr != nil {
+			outputChan <- ClientStreamResponse{Error: fmt.Errorf("failed after %d attempts: %w", MaxRetries, lastErr)}
+		}
+	}()
+
+	return outputChan, nil
+}
+
 func (c *Client) buildGenerateRequest(prompt, systemPrompt string) GenerateRequest {
 	actualSystemPrompt := systemPrompt
 	actualPrompt := prompt
@@ -169,13 +288,13 @@ func (c *Client) buildGenerateRequest(prompt, systemPrompt string) GenerateReque
 	}
 
 	return GenerateRequest{
-		Model:  c.model,
+		Model: c.model,
 		Prompt: actualPrompt,
 		System: actualSystemPrompt,
 		Stream: false,
 		Options: map[string]interface{}{
 			"temperature": 0.7,
-			"top_p":       0.9,
+			"top_p": 0.9,
 		},
 	}
 }
@@ -196,7 +315,7 @@ func (c *Client) isLegacyVersion() bool {
 
 // ModelInfo represents information about an available model
 type ModelInfo struct {
-	Name   string `json:"name"`
+	Name string `json:"name"`
 	Digest string `json:"digest,omitempty"`
 }
 

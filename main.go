@@ -46,14 +46,14 @@ const (
 
 // App struct
 type App struct {
-	ctx              context.Context
-	config           *config.Config
-	ollamaClient     *ollama.Client
-	rewriter         *rewriter.Rewriter
-	hotkeyManager    *win.HotkeyManager
-	trayManager      *win.TrayManager
+	ctx context.Context
+	config *config.Config
+	ollamaClient *ollama.Client
+	rewriter *rewriter.Rewriter
+	hotkeyManager *win.HotkeyManager
+	trayManager *win.TrayManager
 	clipboardManager *win.ClipboardManager
-	quitting         bool
+	quitting bool
 }
 
 // NewApp creates a new App application struct
@@ -90,8 +90,8 @@ func (a *App) initWindowsComponents() {
 	if err != nil {
 		runtime.LogError(a.ctx, fmt.Sprintf("Failed to register hotkey: %v", err))
 		runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-			Type:    runtime.ErrorDialog,
-			Title:   "Hotkey Error",
+			Type: runtime.ErrorDialog,
+			Title: "Hotkey Error",
 			Message: fmt.Sprintf("Failed to register hotkey '%s'. It might be in use by another app.\nError: %v", a.config.Hotkey, err),
 		})
 	} else {
@@ -214,6 +214,11 @@ func (a *App) RetryRewrite(text, style string) rewriter.RewriteOption {
 	return option
 }
 
+// ComputeDiff computes the diff between original and rewritten text
+func (a *App) ComputeDiff(original, rewritten string) rewriter.DiffResult {
+	return a.rewriter.ComputeDiff(original, rewritten)
+}
+
 // ApplyRewrite applies the rewritten text by copying it to clipboard
 func (a *App) ApplyRewrite(text string) error {
 	return a.clipboardManager.SetRichText(text, text)
@@ -288,8 +293,8 @@ func (a *App) SaveSettings(newConfig *config.Config) error {
 		}); err != nil {
 			runtime.LogError(a.ctx, fmt.Sprintf("Failed to register hotkey after settings change: %v", err))
 			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-				Type:    runtime.ErrorDialog,
-				Title:   "Hotkey Error",
+				Type: runtime.ErrorDialog,
+				Title: "Hotkey Error",
 				Message: fmt.Sprintf("Failed to register hotkey '%s': %v", a.config.Hotkey, err),
 			})
 		}
@@ -366,30 +371,16 @@ func (a *App) RetryAnalysisWithFormatting(text, style string, enableFormatting b
 }
 
 // GetStyleInfo returns information about a specific style
-func (a *App) GetStyleInfo(style string) (struct {
-	Label       string
-	Icon        string
-	Description string
-}, bool) {
+func (a *App) GetStyleInfo(style string) (rewriter.StyleInfoData, bool) {
 	return rewriter.GetStyleInfo(style)
 }
 
 // DetectTextType analyzes text and returns the detected type
-func (a *App) DetectTextType(text string) struct {
-	Type       string  `json:"type"`
-	Label      string  `json:"label"`
-	Icon       string  `json:"icon"`
-	Confidence float64 `json:"confidence"`
-} {
+func (a *App) DetectTextType(text string) rewriter.TextTypeDetected {
 	detectedType, confidence := rewriter.DetectTextType(text)
 	info, _ := rewriter.GetTextTypeInfo(detectedType)
 
-	return struct {
-		Type       string  `json:"type"`
-		Label      string  `json:"label"`
-		Icon       string  `json:"icon"`
-		Confidence float64 `json:"confidence"`
-	}{
+	return rewriter.TextTypeDetected{
 		Type:       string(detectedType),
 		Label:      info.Label,
 		Icon:       info.Icon,
@@ -398,28 +389,13 @@ func (a *App) DetectTextType(text string) struct {
 }
 
 // GetTextTypes returns all available text types
-func (a *App) GetTextTypes() []struct {
-	Type        string `json:"type"`
-	Label       string `json:"label"`
-	Icon        string `json:"icon"`
-	Description string `json:"description"`
-} {
+func (a *App) GetTextTypes() []rewriter.TextTypeInfo {
 	types := rewriter.AllTextTypes()
-	result := make([]struct {
-		Type        string `json:"type"`
-		Label       string `json:"label"`
-		Icon        string `json:"icon"`
-		Description string `json:"description"`
-	}, 0, len(types))
+	result := make([]rewriter.TextTypeInfo, 0, len(types))
 
 	for _, t := range types {
 		info, _ := rewriter.GetTextTypeInfo(t)
-		result = append(result, struct {
-			Type        string `json:"type"`
-			Label       string `json:"label"`
-			Icon        string `json:"icon"`
-			Description string `json:"description"`
-		}{
+		result = append(result, rewriter.TextTypeInfo{
 			Type:        string(t),
 			Label:       info.Label,
 			Icon:        info.Icon,
@@ -520,24 +496,24 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "The Copyfather",
-		Width:  500,
+		Title: "The Copyfather",
+		Width: 500,
 		Height: 700,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 10, G: 10, B: 15, A: 0},
-		OnStartup:        app.startup,
-		OnDomReady:       app.domReady,
-		OnBeforeClose:    app.beforeClose,
-		OnShutdown:       app.shutdown,
+		OnStartup: app.startup,
+		OnDomReady: app.domReady,
+		OnBeforeClose: app.beforeClose,
+		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
-			DisableWindowIcon:    false,
+			WindowIsTranslucent: true,
+			DisableWindowIcon: false,
 		},
 	})
 

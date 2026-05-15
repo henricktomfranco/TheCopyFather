@@ -1,11 +1,14 @@
 module textrewriter
 
-go 1.23
+go 1.22.0
+
+toolchain go1.22.2
 
 require (
 	github.com/getlantern/systray v1.2.2
+	github.com/mattn/go-sqlite3 v1.14.44
+	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3
 	github.com/wailsapp/wails/v2 v2.11.0
-	golang.org/x/sys v0.30.0
 )
 
 require (
@@ -42,6 +45,7 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 )
 

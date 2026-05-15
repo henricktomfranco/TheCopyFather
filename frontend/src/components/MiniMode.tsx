@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as runtime from '../../wailsjs/runtime'
+import * as AppAPI from '../../wailsjs/go/main/App'
+import '../styles/main.css'
 import '../styles/MiniMode.css'
 
 interface MiniModeProps {
@@ -13,9 +15,7 @@ interface MiniModeProps {
   isGenerating: boolean
 }
 
-const TRUNCATE_LENGTH = 35
-
-function MiniMode({
+export default function MiniMode({
   originalText,
   currentStyle,
   onExpand,
@@ -32,19 +32,16 @@ function MiniMode({
   const miniRef = useRef<HTMLDivElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Position near cursor on mount
   useEffect(() => {
     const initPosition = async () => {
       try {
-        // @ts-ignore
-        const pos = await window.go.main.App.GetCursorPosition()
+        const pos = await AppAPI.GetCursorPosition()
         if (pos && miniRef.current) {
           const offsetX = 20
           const offsetY = -80
           let newX = pos.x + offsetX
           let newY = pos.y + offsetY
 
-          // Keep on screen
           const rect = miniRef.current.getBoundingClientRect()
           const screenWidth = window.screen.width
           const screenHeight = window.screen.height
@@ -57,7 +54,6 @@ function MiniMode({
           setPosition({ x: newX, y: newY })
         }
       } catch (e) {
-        // Fallback to center
         setPosition({
           x: window.screen.width / 2 - 140,
           y: window.screen.height / 2 - 50
@@ -67,7 +63,6 @@ function MiniMode({
     initPosition()
   }, [])
 
-  // Handle drag
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.minimode-btn, .minimode-dropdown')) {
       return
@@ -102,7 +97,6 @@ function MiniMode({
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -113,12 +107,10 @@ function MiniMode({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Keyboard shortcuts and window sizing
   useEffect(() => {
-    // Resize window for mini mode
     runtime.WindowSetSize(340, 140)
     runtime.WindowShow()
-    
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose()
@@ -135,8 +127,8 @@ function MiniMode({
   }, [onClose, onExpand, onQuickRewrite])
 
   const truncateText = (text: string) => {
-    if (text.length <= TRUNCATE_LENGTH) return text
-    return text.substring(0, TRUNCATE_LENGTH) + '...'
+    if (text.length <= 35) return text
+    return text.substring(0, 35) + '...'
   }
 
   const currentStyleData = availableStyles.find(s => s.value === currentStyle) || availableStyles[0]
@@ -144,7 +136,7 @@ function MiniMode({
   return (
     <div
       ref={miniRef}
-      className={`mini-mode ${isDragging ? 'dragging' : ''}`}
+      className={`mini-mode-v2 ${isDragging ? 'dragging' : ''}`}
       style={{
         left: position.x,
         top: position.y,
@@ -152,39 +144,39 @@ function MiniMode({
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* Header with drag handle */}
-      <div className="mini-header">
+      {/* Header */}
+      <div className="mini-header-v2">
         <div className="drag-indicator">
           <span className="drag-dots">⋮⋮</span>
         </div>
         <div className="original-preview" title={originalText}>
           {truncateText(originalText)}
         </div>
-        <button className="minimode-btn close-btn" onClick={onClose} title="Close (Esc)">
+        <button className="mini-close-btn" onClick={onClose} title="Close">
           ✕
         </button>
       </div>
 
-      {/* Action Bar */}
-      <div className="mini-actions">
+      {/* Actions */}
+      <div className="mini-actions-v2">
         {/* Style Selector */}
-        <div className="style-selector-mini" ref={dropdownRef}>
+        <div className="mini-style-selector" ref={dropdownRef}>
           <button
-            className="minimode-btn style-btn"
+            className="mini-style-btn"
             onClick={() => setShowStyleDropdown(!showStyleDropdown)}
             title="Change style"
           >
             <span className="style-icon">{currentStyleData?.icon}</span>
-            <span className="style-label">{currentStyleData?.label}</span>
-            <span className={`chevron ${showStyleDropdown ? 'open' : ''}`}>▼</span>
+            <span className="style-label-mini">{currentStyleData?.label}</span>
+            <span className={`mini-chevron ${showStyleDropdown ? 'open' : ''}`}>▼</span>
           </button>
 
           {showStyleDropdown && (
-            <div className="minimode-dropdown">
+            <div className="mini-dropdown">
               {availableStyles.map(style => (
                 <button
                   key={style.value}
-                  className={`dropdown-item ${style.value === currentStyle ? 'active' : ''}`}
+                  className={`mini-dropdown-item ${style.value === currentStyle ? 'active' : ''}`}
                   onClick={() => {
                     onStyleChange(style.value)
                     setShowStyleDropdown(false)
@@ -198,15 +190,15 @@ function MiniMode({
           )}
         </div>
 
-        {/* Quick Rewrite Button */}
+        {/* Quick Rewrite */}
         <button
-          className={`minimode-btn rewrite-btn ${isGenerating ? 'generating' : ''}`}
+          className={`mini-rewrite-btn ${isGenerating ? 'generating' : ''}`}
           onClick={onQuickRewrite}
           disabled={isGenerating}
-          title="Rewrite (Enter)"
+          title="Rewrite"
         >
           {isGenerating ? (
-            <span className="spinner"></span>
+            <span className="mini-spinner"></span>
           ) : (
             <>
               <span>🔄</span>
@@ -215,18 +207,18 @@ function MiniMode({
           )}
         </button>
 
-        {/* Expand Button */}
+        {/* Expand */}
         <button
-          className="minimode-btn expand-btn"
+          className="mini-expand-btn"
           onClick={onExpand}
-          title="Expand to full view (Ctrl+Space)"
+          title="Expand"
         >
           <span>⛶</span>
         </button>
       </div>
 
-      {/* Status Bar */}
-      <div className="mini-status">
+      {/* Status */}
+      <div className="mini-status-v2">
         <span className="status-hint">
           {isGenerating ? 'Generating...' : 'Press Enter to rewrite'}
         </span>
@@ -234,5 +226,3 @@ function MiniMode({
     </div>
   )
 }
-
-export default MiniMode

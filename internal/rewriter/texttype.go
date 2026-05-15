@@ -17,17 +17,20 @@ const (
 )
 
 // TextTypeInfo contains display information for each text type
-var TextTypeInfo = map[TextType]struct {
+type TextTypeInfo struct {
+	Type        string
 	Label       string
 	Icon        string
 	Description string
-}{
-	TextTypeEmail:   {"Email", "📧", "Formal correspondence with greeting and signature"},
-	TextTypeChat:    {"Chat/Message", "💬", "Casual conversation or instant messages"},
-	TextTypeNormal:  {"Normal Text", "📝", "General prose or paragraphs"},
-	TextTypeCode:    {"Code", "💻", "Programming code or technical content"},
-	TextTypeList:    {"List/Points", "•••", "Bullet points or numbered items"},
-	TextTypeUnknown: {"Unknown", "❓", "Could not determine text type"},
+}
+
+var TextTypeInfoMap = map[TextType]TextTypeInfo{
+	TextTypeEmail:   {Type: "email", Label: "Email", Icon: "📧", Description: "Formal correspondence with greeting and signature"},
+	TextTypeChat:    {Type: "chat", Label: "Chat/Message", Icon: "💬", Description: "Casual conversation or instant messages"},
+	TextTypeNormal:  {Type: "normal", Label: "Normal Text", Icon: "📝", Description: "General prose or paragraphs"},
+	TextTypeCode:    {Type: "code", Label: "Code", Icon: "💻", Description: "Programming code or technical content"},
+	TextTypeList:    {Type: "list", Label: "List/Points", Icon: "•••", Description: "Bullet points or numbered items"},
+	TextTypeUnknown: {Type: "unknown", Label: "Unknown", Icon: "❓", Description: "Could not determine text type"},
 }
 
 // AllTextTypes returns all available text types
@@ -273,11 +276,10 @@ func normalizeScore(score float64) float64 {
 }
 
 // GetTextTypeInfo returns information about a text type
-func GetTextTypeInfo(t TextType) (struct {
-	Label       string
-	Icon        string
-	Description string
-}, bool) {
-	info, ok := TextTypeInfo[t]
+func GetTextTypeInfo(t TextType) (TextTypeInfo, bool) {
+	info, ok := TextTypeInfoMap[t]
+	if ok && info.Type == "" {
+		info.Type = string(t)
+	}
 	return info, ok
 }
