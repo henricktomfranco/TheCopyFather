@@ -21,7 +21,8 @@ type Config struct {
 	CustomPrompts     map[string]map[string]string `json:"custom_prompts,omitempty"`
 	AutoPasteMode     string                       `json:"auto_paste_mode"`
 	PopupPositionMode string                       `json:"popup_position_mode"`
-	MiniMode          bool                         `json:"mini_mode"`
+	MiniMode           bool                   `json:"mini_mode"`
+	AutoMinimizeOnCopy bool                   `json:"auto_minimize_on_copy"`
 }
 
 // DefaultConfig returns the default configuration
@@ -37,7 +38,8 @@ func DefaultConfig() *Config {
 		CustomPrompts:     make(map[string]map[string]string),
 		AutoPasteMode:     "ask",
 		PopupPositionMode: "cursor",
-		MiniMode:          false,
+		MiniMode:           false,
+		AutoMinimizeOnCopy: true,
 	}
 }
 

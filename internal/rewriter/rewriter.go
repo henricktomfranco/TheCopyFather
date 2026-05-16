@@ -848,8 +848,15 @@ func isValidAnalysisStyle(style string) bool {
 	return false
 }
 
+// StreamChunk represents a single chunk from a streaming response
+type StreamChunk struct {
+	Text  string `json:"text"`
+	Done  bool   `json:"done"`
+	Error string `json:"error,omitempty"`
+}
+
 // GenerateStream generates a rewrite and streams the response
-func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-chan string, error) {
+func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-chan StreamChunk, error) {
 	if !isValidStyle(style) {
 		return nil, fmt.Errorf("invalid style: %s", style)
 	}
@@ -859,21 +866,181 @@ func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-ch
 	if err != nil {
 		return nil, err
 	}
-	
-	// Convert ClientStreamResponse channel to string channel
-	outputChan := make(chan string, 100)
+
+	outputChan := make(chan StreamChunk, 100)
 	go func() {
 		defer close(outputChan)
 		for resp := range streamChan {
 			if resp.Error != nil {
-				// We can't send errors through the string channel, so we'll skip
-				// In a real implementation, you might want to handle this differently
-				continue
+				outputChan <- StreamChunk{Error: resp.Error.Error()}
+				return
 			}
-			outputChan <- resp.Response
+			cleaned := cleanResponse(resp.Response)
+			if cleaned != "" {
+				outputChan <- StreamChunk{Text: cleaned}
+			}
+			if resp.Done {
+				outputChan <- StreamChunk{Done: true}
+				return
+			}
 		}
 	}()
-	
+
+	return outputChan, nil
+}
+
+// GenerateStreamWithFormatting generates a rewrite with optional formatting and streams the response
+func (r *Rewriter) GenerateStreamWithFormatting(ctx context.Context, text, style string, enableFormatting bool) (<-chan StreamChunk, error) {
+	if !isValidStyle(style) {
+		return nil, fmt.Errorf("invalid style: %s", style)
+	}
+
+	var systemPrompt string
+	if enableFormatting {
+		systemPrompt = r.config.GetPrompt(style, "normal")
+	} else {
+		if customPrompt := r.config.GetCustomPrompt(style, "normal"); customPrompt != "" {
+			systemPrompt = customPrompt
+		} else {
+			systemPrompt = getPlainTextPrompt(style)
+		}
+	}
+
+	streamChan, err := r.client.GenerateStream(ctx, text, style, systemPrompt)
+	if err != nil {
+		return nil, err
+	}
+
+	outputChan := make(chan StreamChunk, 100)
+	go func() {
+		defer close(outputChan)
+		var fullText strings.Builder
+		for resp := range streamChan {
+			if resp.Error != nil {
+				outputChan <- StreamChunk{Error: resp.Error.Error()}
+				return
+			}
+			fullText.WriteString(resp.Response)
+			cleaned := cleanResponse(fullText.String())
+			if !enableFormatting {
+				cleaned = stripMarkdownFormatting(cleaned)
+			}
+			outputChan <- StreamChunk{Text: cleaned}
+			if resp.Done {
+				outputChan <- StreamChunk{Done: true}
+				return
+			}
+		}
+	}()
+
+	return outputChan, nil
+}
+
+// GenerateStreamWithTextType generates a rewrite with specific text type and streams the response
+func (r *Rewriter) GenerateStreamWithTextType(ctx context.Context, text, style string, textType TextType, enableFormatting bool) (<-chan StreamChunk, error) {
+	if !isValidStyle(style) {
+		return nil, fmt.Errorf("invalid style: %s", style)
+	}
+
+	systemPrompt := r.getPromptForTextType(style, textType, enableFormatting)
+	streamChan, err := r.client.GenerateStream(ctx, text, style, systemPrompt)
+	if err != nil {
+		return nil, err
+	}
+
+	outputChan := make(chan StreamChunk, 100)
+	go func() {
+		defer close(outputChan)
+		var fullText strings.Builder
+		for resp := range streamChan {
+			if resp.Error != nil {
+				outputChan <- StreamChunk{Error: resp.Error.Error()}
+				return
+			}
+			fullText.WriteString(resp.Response)
+			cleaned := cleanResponse(fullText.String())
+			if !enableFormatting {
+				cleaned = stripMarkdownFormatting(cleaned)
+			}
+			outputChan <- StreamChunk{Text: cleaned}
+			if resp.Done {
+				outputChan <- StreamChunk{Done: true}
+				return
+			}
+		}
+	}()
+
+	return outputChan, nil
+}
+
+// GenerateStreamAnalysis generates an analysis and streams the response
+func (r *Rewriter) GenerateStreamAnalysis(ctx context.Context, text, style string) (<-chan StreamChunk, error) {
+	if !isValidAnalysisStyle(style) {
+		return nil, fmt.Errorf("invalid analysis style: %s", style)
+	}
+
+	systemPrompt := r.config.GetPrompt(style, "normal")
+	streamChan, err := r.client.GenerateStream(ctx, text, style, systemPrompt)
+	if err != nil {
+		return nil, err
+	}
+
+	outputChan := make(chan StreamChunk, 100)
+	go func() {
+		defer close(outputChan)
+		for resp := range streamChan {
+			if resp.Error != nil {
+				outputChan <- StreamChunk{Error: resp.Error.Error()}
+				return
+			}
+			cleaned := cleanResponse(resp.Response)
+			if cleaned != "" {
+				outputChan <- StreamChunk{Text: cleaned}
+			}
+			if resp.Done {
+				outputChan <- StreamChunk{Done: true}
+				return
+			}
+		}
+	}()
+
+	return outputChan, nil
+}
+
+// GenerateStreamAnalysisWithTextType generates an analysis with specific text type and streams the response
+func (r *Rewriter) GenerateStreamAnalysisWithTextType(ctx context.Context, text, style string, textType TextType, enableFormatting bool) (<-chan StreamChunk, error) {
+	if !isValidAnalysisStyle(style) {
+		return nil, fmt.Errorf("invalid analysis style: %s", style)
+	}
+
+	systemPrompt := r.getPromptForTextType(style, textType, enableFormatting)
+	streamChan, err := r.client.GenerateStream(ctx, text, style, systemPrompt)
+	if err != nil {
+		return nil, err
+	}
+
+	outputChan := make(chan StreamChunk, 100)
+	go func() {
+		defer close(outputChan)
+		var fullText strings.Builder
+		for resp := range streamChan {
+			if resp.Error != nil {
+				outputChan <- StreamChunk{Error: resp.Error.Error()}
+				return
+			}
+			fullText.WriteString(resp.Response)
+			cleaned := cleanResponse(fullText.String())
+			if !enableFormatting {
+				cleaned = stripMarkdownFormatting(cleaned)
+			}
+			outputChan <- StreamChunk{Text: cleaned}
+			if resp.Done {
+				outputChan <- StreamChunk{Done: true}
+				return
+			}
+		}
+	}()
+
 	return outputChan, nil
 }
 

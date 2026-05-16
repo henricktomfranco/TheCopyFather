@@ -13,6 +13,7 @@ export namespace config {
 	    auto_paste_mode: string;
 	    popup_position_mode: string;
 	    mini_mode: boolean;
+	    auto_minimize_on_copy: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -32,6 +33,7 @@ export namespace config {
 	        this.auto_paste_mode = source["auto_paste_mode"];
 	        this.popup_position_mode = source["popup_position_mode"];
 	        this.mini_mode = source["mini_mode"];
+	        this.auto_minimize_on_copy = source["auto_minimize_on_copy"];
 	    }
 	}
 

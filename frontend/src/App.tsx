@@ -209,11 +209,46 @@ const handleSaveSettings = async (newSettings: Config) => {
   const handleMiniModeRewrite = async (style: string) => {
     if (!selectedText) return
     setIsGenerating(true)
+    const requestID = crypto.randomUUID()
+    let resultText = ''
+
+    const cleanup = () => {
+      runtime.EventsOff(`stream:chunk:${requestID}`)
+      runtime.EventsOff(`stream:done:${requestID}`)
+      runtime.EventsOff(`stream:error:${requestID}`)
+    }
+
     try {
-      const result = await AppAPI.RetryRewriteWithFormatting(selectedText, style, true)
-      if (result.text) {
-        setMiniModeResult(result.text)
-        await AppAPI.ApplyRewrite(result.text)
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cleanup()
+          reject(new Error('Streaming timeout'))
+        }, 120000)
+
+        runtime.EventsOn(`stream:chunk:${requestID}`, (chunk: string) => {
+          if (chunk) {
+            resultText = chunk
+            setMiniModeResult(chunk)
+          }
+        })
+
+        runtime.EventsOn(`stream:done:${requestID}`, () => {
+          clearTimeout(timeout)
+          cleanup()
+          resolve()
+        })
+
+        runtime.EventsOn(`stream:error:${requestID}`, (errMsg: string) => {
+          clearTimeout(timeout)
+          cleanup()
+          reject(new Error(errMsg))
+        })
+
+        AppAPI.StreamRewriteWithFormatting(requestID, selectedText, style, true)
+      })
+
+      if (resultText) {
+        await AppAPI.ApplyRewrite(resultText)
       }
     } catch (error) {
       console.error('Mini mode rewrite failed:', error)

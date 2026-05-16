@@ -343,6 +343,19 @@ export default function Settings({
             </div>
           </div>
 
+          <div className="form-group" style={{ marginTop: 'var(--spacing-md)' }}>
+            <div className="toggle-group">
+              <div className="toggle-label">
+                <span>Auto-Minimize on Copy</span>
+                <small>Minimize window after copying rewritten text</small>
+              </div>
+              <div
+                className={`toggle-switch ${formData.auto_minimize_on_copy ? 'active' : ''}`}
+                onClick={() => handleChange('auto_minimize_on_copy', !formData.auto_minimize_on_copy)}
+              />
+            </div>
+          </div>
+
           <div className="form-group" style={{ marginTop: 'var(--spacing-lg)' }}>
             <label htmlFor="hotkey">Hotkey</label>
             <input

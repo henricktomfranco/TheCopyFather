@@ -10,6 +10,10 @@ export function ApplyRewriteAndPaste(arg1) {
   return window['go']['main']['App']['ApplyRewriteAndPaste'](arg1);
 }
 
+export function CancelStream(arg1) {
+  return window['go']['main']['App']['CancelStream'](arg1);
+}
+
 export function ComputeDiff(arg1, arg2) {
   return window['go']['main']['App']['ComputeDiff'](arg1, arg2);
 }
@@ -96,6 +100,18 @@ export function SaveSettings(arg1) {
 
 export function SetCustomPrompt(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetCustomPrompt'](arg1, arg2, arg3);
+}
+
+export function StreamAnalysisWithTextType(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['StreamAnalysisWithTextType'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function StreamRewriteWithFormatting(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['StreamRewriteWithFormatting'](arg1, arg2, arg3, arg4);
+}
+
+export function StreamRewriteWithTextType(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['StreamRewriteWithTextType'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function TestConnection(arg1, arg2, arg3) {

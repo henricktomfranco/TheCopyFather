@@ -7,6 +7,8 @@ export function ApplyRewrite(arg1:string):Promise<void>;
 
 export function ApplyRewriteAndPaste(arg1:string):Promise<void>;
 
+export function CancelStream(arg1:string):Promise<void>;
+
 export function ComputeDiff(arg1:string,arg2:string):Promise<rewriter.DiffResult>;
 
 export function DeleteCustomPrompt(arg1:string,arg2:string):Promise<void>;
@@ -50,5 +52,11 @@ export function RetryRewriteWithTextType(arg1:string,arg2:string,arg3:string,arg
 export function SaveSettings(arg1:config.Config):Promise<void>;
 
 export function SetCustomPrompt(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function StreamAnalysisWithTextType(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
+
+export function StreamRewriteWithFormatting(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
+
+export function StreamRewriteWithTextType(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
 
 export function TestConnection(arg1:string,arg2:string,arg3:string):Promise<string>;

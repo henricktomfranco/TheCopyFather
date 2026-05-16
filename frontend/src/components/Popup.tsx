@@ -86,6 +86,8 @@ export default function Popup({
   const [isDetecting, setIsDetecting] = useState(false)
   const [isUserOverride, setIsUserOverride] = useState(false)
   const [showOriginal, setShowOriginal] = useState(false)
+  const activeRequestIDRef = useRef<string | null>(null)
+  const cleanupRef = useRef<(() => void) | null>(null)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const textTypeDropdownRef = useRef<HTMLDivElement>(null)
@@ -93,6 +95,19 @@ export default function Popup({
   useEffect(() => {
     enableFormattingRef.current = enableFormatting
   }, [enableFormatting])
+
+  useEffect(() => {
+    return () => {
+      if (activeRequestIDRef.current) {
+        AppAPI.CancelStream(activeRequestIDRef.current)
+        activeRequestIDRef.current = null
+      }
+      if (cleanupRef.current) {
+        cleanupRef.current()
+        cleanupRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (onResultChange) {
@@ -162,9 +177,28 @@ export default function Popup({
       return
     }
 
+    if (activeRequestIDRef.current) {
+      AppAPI.CancelStream(activeRequestIDRef.current)
+      if (cleanupRef.current) {
+        cleanupRef.current()
+        cleanupRef.current = null
+      }
+      activeRequestIDRef.current = null
+    }
+
     setLoading(true)
     setError(null)
     setResult('')
+
+    const requestID = crypto.randomUUID()
+    activeRequestIDRef.current = requestID
+
+    const cleanup = () => {
+      runtime.EventsOff(`stream:chunk:${requestID}`)
+      runtime.EventsOff(`stream:done:${requestID}`)
+      runtime.EventsOff(`stream:error:${requestID}`)
+    }
+    cleanupRef.current = cleanup
 
     try {
       let generatedText = ''
@@ -173,45 +207,51 @@ export default function Popup({
 
       console.log('Using text type specific:', useTypeSpecific, 'Text type:', textTypeToUse)
 
-      if (targetMainMode === 'analyze') {
-        if (useTypeSpecific) {
-          const option = await AppAPI.RetryAnalysisWithTextType(originalText, targetStyle, textTypeToUse, currentFormatting)
-          if (option.error) {
-            setError(option.error)
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cleanup()
+          activeRequestIDRef.current = null
+          reject(new Error('Streaming timeout'))
+        }, 120000)
+
+        runtime.EventsOn(`stream:chunk:${requestID}`, (chunk: string) => {
+          if (chunk) {
+            generatedText = chunk
+            setResult(chunk)
+          }
+        })
+
+        runtime.EventsOn(`stream:done:${requestID}`, () => {
+          clearTimeout(timeout)
+          cleanup()
+          activeRequestIDRef.current = null
+          resolve()
+        })
+
+        runtime.EventsOn(`stream:error:${requestID}`, (errMsg: string) => {
+          clearTimeout(timeout)
+          cleanup()
+          activeRequestIDRef.current = null
+          reject(new Error(errMsg))
+        })
+
+        if (targetMainMode === 'analyze') {
+          if (useTypeSpecific) {
+            AppAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
           } else {
-            generatedText = option.text
-            setResult(generatedText)
+            AppAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, 'normal', currentFormatting)
           }
         } else {
-          const option = await AppAPI.RetryAnalysisWithFormatting(originalText, targetStyle, currentFormatting)
-          if (option.error) {
-            setError(option.error)
+          if (useTypeSpecific) {
+            AppAPI.StreamRewriteWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
           } else {
-            generatedText = option.text
-            setResult(generatedText)
+            AppAPI.StreamRewriteWithFormatting(requestID, originalText, targetStyle, currentFormatting)
           }
         }
-      } else {
-        if (useTypeSpecific) {
-          const option = await AppAPI.RetryRewriteWithTextType(originalText, targetStyle, textTypeToUse, currentFormatting)
-          if (option.error) {
-            setError(option.error)
-          } else {
-            generatedText = option.text
-            setResult(generatedText)
-          }
-        } else {
-          const option = await AppAPI.RetryRewriteWithFormatting(originalText, targetStyle, currentFormatting)
-          if (option.error) {
-            setError(option.error)
-          } else {
-            generatedText = option.text
-            setResult(generatedText)
-          }
-        }
-      }
+      })
 
       if (generatedText) {
+        cache.set(cacheKey, generatedText)
         const historyEntry = { text: generatedText, style: targetStyle, timestamp: Date.now() }
         setResultHistory(prev => {
           const newHistory = [...prev, historyEntry]
@@ -231,7 +271,7 @@ export default function Popup({
       }
     } catch (err) {
       console.error('Generate error:', err)
-      setError('Failed to connect to AI server')
+      setError(err instanceof Error ? err.message : 'Failed to connect to AI server')
     }
     setLoading(false)
   }, [originalText, selectedTextType, isUserOverride])
@@ -351,6 +391,13 @@ export default function Popup({
       await AppAPI.ApplyRewrite(result)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+
+      const settings = await AppAPI.GetSettings()
+      if (settings?.auto_minimize_on_copy) {
+        setTimeout(() => {
+          runtime.WindowMinimise()
+        }, 400)
+      }
     } catch (err) {
       console.error('Failed to copy:', err)
     }
@@ -716,6 +763,11 @@ export default function Popup({
               {mainMode === 'rewrite' && rewriteStyle === 'grammar' && !loading && result && (
                 <span className="badge-success">✓ Grammar & Style</span>
               )}
+              {loading && result && (
+                <span className="streaming-badge">
+                  <span className="streaming-dot"></span> Streaming...
+                </span>
+              )}
               {!loading && confidenceScore !== null && result && (
                 <span className={`confidence-badge ${confidenceScore >= 85 ? 'high' : confidenceScore >= 70 ? 'medium' : 'low'}`}>
                   📊 {confidenceScore}% confidence
@@ -757,13 +809,7 @@ export default function Popup({
             onClick={handleCopy}
             title="Click to copy"
           >
-            {loading ? (
-              <div className="skeleton-loader">
-                <div className="skeleton-line"></div>
-                <div className="skeleton-line"></div>
-                <div className="skeleton-line short"></div>
-              </div>
-            ) : error ? (
+            {error ? (
               <div className="error-state">
                 <span className="error-icon">⚠️</span>
                 <p>{error}</p>
@@ -774,11 +820,17 @@ export default function Popup({
                   Retry
                 </button>
               </div>
-            ) : (
+            ) : result ? (
               <div className="result-content">
                 {renderContent(result)}
               </div>
-            )}
+            ) : loading ? (
+              <div className="skeleton-loader">
+                <div className="skeleton-line"></div>
+                <div className="skeleton-line"></div>
+                <div className="skeleton-line short"></div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

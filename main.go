@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"textrewriter/internal/config"
@@ -54,6 +55,8 @@ type App struct {
 	trayManager *win.TrayManager
 	clipboardManager *win.ClipboardManager
 	quitting bool
+	streamingRequests map[string]context.CancelFunc
+	streamingMu       sync.RWMutex
 }
 
 // NewApp creates a new App application struct
@@ -450,6 +453,151 @@ func (a *App) RetryAnalysisWithTextType(text, style, textType string, enableForm
 	return option
 }
 
+// StreamRewriteWithFormatting starts a streaming rewrite and emits events to the frontend
+func (a *App) StreamRewriteWithFormatting(requestID, text, style string, enableFormatting bool) {
+	a.registerStream(requestID)
+	go func() {
+		defer a.unregisterStream(requestID)
+
+		streamCtx, cancel := context.WithCancel(a.ctx)
+		a.setStreamCancel(requestID, cancel)
+		defer cancel()
+
+		streamChan, err := a.rewriter.GenerateStreamWithFormatting(streamCtx, text, style, enableFormatting)
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
+
+		a.streamChunksWithRateLimit(requestID, streamChan)
+	}()
+}
+
+// StreamRewriteWithTextType starts a streaming rewrite with text type and emits events to the frontend
+func (a *App) StreamRewriteWithTextType(requestID, text, style, textType string, enableFormatting bool) {
+	a.registerStream(requestID)
+	go func() {
+		defer a.unregisterStream(requestID)
+
+		streamCtx, cancel := context.WithCancel(a.ctx)
+		a.setStreamCancel(requestID, cancel)
+		defer cancel()
+
+		streamChan, err := a.rewriter.GenerateStreamWithTextType(streamCtx, text, style, rewriter.TextType(textType), enableFormatting)
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
+
+		a.streamChunksWithRateLimit(requestID, streamChan)
+	}()
+}
+
+// StreamAnalysisWithTextType starts a streaming analysis with text type and emits events to the frontend
+func (a *App) StreamAnalysisWithTextType(requestID, text, style, textType string, enableFormatting bool) {
+	a.registerStream(requestID)
+	go func() {
+		defer a.unregisterStream(requestID)
+
+		streamCtx, cancel := context.WithCancel(a.ctx)
+		a.setStreamCancel(requestID, cancel)
+		defer cancel()
+
+		streamChan, err := a.rewriter.GenerateStreamAnalysisWithTextType(streamCtx, text, style, rewriter.TextType(textType), enableFormatting)
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
+
+		a.streamChunksWithRateLimit(requestID, streamChan)
+	}()
+}
+
+// CancelStream cancels an active streaming request
+func (a *App) CancelStream(requestID string) {
+	a.streamingMu.RLock()
+	cancel, exists := a.streamingRequests[requestID]
+	a.streamingMu.RUnlock()
+
+	if exists {
+		cancel()
+	}
+}
+
+// registerStream registers a new streaming request
+func (a *App) registerStream(requestID string) {
+	a.streamingMu.Lock()
+	defer a.streamingMu.Unlock()
+	if a.streamingRequests == nil {
+		a.streamingRequests = make(map[string]context.CancelFunc)
+	}
+}
+
+// setStreamCancel stores the cancel function for a request
+func (a *App) setStreamCancel(requestID string, cancel context.CancelFunc) {
+	a.streamingMu.Lock()
+	defer a.streamingMu.Unlock()
+	a.streamingRequests[requestID] = cancel
+}
+
+// unregisterStream removes a streaming request
+func (a *App) unregisterStream(requestID string) {
+	a.streamingMu.Lock()
+	defer a.streamingMu.Unlock()
+	delete(a.streamingRequests, requestID)
+}
+
+// streamChunksWithRateLimit reads from stream channel and emits events with rate limiting
+func (a *App) streamChunksWithRateLimit(requestID string, streamChan <-chan rewriter.StreamChunk) {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	var lastText string
+	var pending bool
+	var done bool
+	var errMsg string
+
+	emitPending := func() {
+		if pending {
+			pending = false
+			if errMsg != "" {
+				runtime.EventsEmit(a.ctx, "stream:error:"+requestID, errMsg)
+			} else if done {
+				runtime.EventsEmit(a.ctx, "stream:done:"+requestID, true)
+			} else {
+				runtime.EventsEmit(a.ctx, "stream:chunk:"+requestID, lastText)
+			}
+		}
+	}
+
+	for {
+		select {
+		case chunk, ok := <-streamChan:
+			if !ok {
+				emitPending()
+				return
+			}
+			if chunk.Error != "" {
+				errMsg = chunk.Error
+				pending = true
+				emitPending()
+				return
+			}
+			if chunk.Done {
+				lastText = chunk.Text
+				done = true
+				pending = true
+				emitPending()
+				return
+			}
+			lastText = chunk.Text
+			pending = true
+		case <-ticker.C:
+			emitPending()
+		}
+	}
+}
+
 // domReady is called after front-end resources have been loaded
 func (a *App) domReady(ctx context.Context) {
 	// Add your action here
@@ -457,6 +605,13 @@ func (a *App) domReady(ctx context.Context) {
 
 // shutdown is called at application termination
 func (a *App) shutdown(ctx context.Context) {
+	// Cancel all active streaming requests
+	a.streamingMu.RLock()
+	for _, cancel := range a.streamingRequests {
+		cancel()
+	}
+	a.streamingMu.RUnlock()
+
 	// Stop all managers
 	if a.hotkeyManager != nil {
 		a.hotkeyManager.Stop()
