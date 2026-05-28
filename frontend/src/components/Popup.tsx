@@ -651,10 +651,10 @@ export default function Popup({
         </div>
         <div className="header-right">
           <button className="icon-btn" onClick={onSettings} title="Settings">
-            <span>⚙️</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
           </button>
           <button className="icon-btn" onClick={onClose} title="Close">
-            <span>✕</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       </header>
@@ -828,13 +828,20 @@ export default function Popup({
                 {renderContent(result)}
               </div>
             ) : loading ? (
-<div className="skeleton-loader">
-<div className="skeleton-line"></div>
-<div className="skeleton-line medium"></div>
-<div className="skeleton-line"></div>
-<div className="skeleton-line short"></div>
-</div>
-            ) : null}
+              <div className="skeleton-loader">
+                <div className="skeleton-line"></div>
+                <div className="skeleton-line medium"></div>
+                <div className="skeleton-line"></div>
+                <div className="skeleton-line short"></div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <div className="empty-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </div>
+                <span>Select a style and click Rewrite</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -846,7 +853,7 @@ export default function Popup({
           onClick={handleCopy}
           disabled={loading || !!error || !result}
         >
-          {copied ? '✓ Copied' : '📋 Copy'}
+          {copied ? 'Copied' : 'Copy'}
         </button>
         {onShowDiff && (
           <button
@@ -855,7 +862,7 @@ export default function Popup({
             disabled={loading || !!error || !result}
             title="View differences"
           >
-            🔍 Diff
+            Diff
           </button>
         )}
         <button

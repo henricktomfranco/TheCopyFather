@@ -73,59 +73,60 @@ function Welcome({ onAccept }: WelcomeProps) {
                 
                 .welcome-header {
                     text-align: center;
-                    padding-bottom: 24px;
+                    padding: 32px 20px 24px;
                     border-bottom: 1px solid var(--border-subtle);
                 }
                 
                 .welcome-icon {
-                    width: 64px;
-                    height: 64px;
+                    width: 72px;
+                    height: 72px;
                     margin: 0 auto 20px;
-                    background: var(--bg-glass);
-                    backdrop-filter: blur(12px);
-                    border: 1px solid var(--border-subtle);
-                    border-radius: var(--radius-lg);
+                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.06));
+                    border: 1px solid rgba(16, 185, 129, 0.2);
+                    border-radius: var(--radius-xl);
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.08);
                 }
                 
                 .welcome-header h1 {
                     font-family: var(--font-sans);
-                    font-size: 24px;
+                    font-size: 22px;
                     font-weight: 600;
-                    margin: 0 0 8px 0;
+                    margin: 0 0 6px 0;
                     color: var(--text-primary);
+                    letter-spacing: -0.3px;
                 }
                 
                 .welcome-subtitle {
-                    color: var(--text-secondary);
-                    font-size: 14px;
+                    color: var(--text-muted);
+                    font-size: 13px;
                     margin: 0;
+                    font-weight: 400;
                 }
                 
                 .welcome-content {
                     flex: 1;
                     display: flex;
                     flex-direction: column;
-                    gap: 20px;
-                    padding: 24px 0;
+                    gap: 16px;
+                    padding: 20px 20px 0;
                 }
                 
                 .welcome-card {
-                    background: var(--bg-glass);
-                    backdrop-filter: var(--glass-backdrop);
+                    background: var(--bg-secondary);
                     border: 1px solid var(--border-subtle);
                     border-radius: var(--radius-md);
-                    padding: 20px;
+                    padding: 18px;
                     text-align: center;
                 }
                 
                 .welcome-description {
-                    font-size: 15px;
+                    font-size: 14px;
                     line-height: 1.6;
                     color: var(--text-primary);
-                    margin: 0 0 12px 0;
+                    margin: 0 0 10px 0;
                 }
                 
                 .welcome-description strong {
@@ -134,7 +135,7 @@ function Welcome({ onAccept }: WelcomeProps) {
                 }
                 
                 .welcome-note {
-                    font-size: 13px;
+                    font-size: 12px;
                     line-height: 1.5;
                     color: var(--text-muted);
                     margin: 0;
@@ -143,16 +144,16 @@ function Welcome({ onAccept }: WelcomeProps) {
                 .privacy-notice {
                     display: flex;
                     gap: 12px;
-                    background: rgba(16, 185, 129, 0.08);
-                    border: 1px solid rgba(16, 185, 129, 0.15);
+                    background: rgba(16, 185, 129, 0.06);
+                    border: 1px solid rgba(16, 185, 129, 0.12);
                     border-radius: var(--radius-md);
-                    padding: 16px;
-                    backdrop-filter: blur(10px);
+                    padding: 14px;
                 }
                 
                 .privacy-icon {
-                    font-size: 20px;
+                    font-size: 18px;
                     flex-shrink: 0;
+                    opacity: 0.6;
                 }
                 
                 .privacy-text {
@@ -163,25 +164,26 @@ function Welcome({ onAccept }: WelcomeProps) {
                 
                 .privacy-text strong {
                     color: var(--accent-500);
+                    font-weight: 600;
                 }
                 
                 .permissions-list {
                     display: flex;
                     flex-direction: column;
-                    gap: 10px;
+                    gap: 8px;
                 }
                 
                 .permission-item {
                     display: flex;
-                    gap: 12px;
+                    gap: 10px;
                     align-items: center;
-                    padding: 12px 16px;
+                    padding: 10px 14px;
                     background: var(--bg-glass);
                     border: 1px solid var(--border-subtle);
                     border-radius: var(--radius-sm);
-                    font-size: 13px;
+                    font-size: 12px;
                     color: var(--text-secondary);
-                    transition: var(--transition-smooth);
+                    transition: all var(--transition-base);
                 }
                 
                 .permission-item:hover {
@@ -189,19 +191,15 @@ function Welcome({ onAccept }: WelcomeProps) {
                 }
                 
                 .permission-icon {
-                    font-size: 14px;
+                    font-size: 13px;
                     font-weight: bold;
-                    width: 20px;
+                    width: 18px;
                     text-align: center;
                 }
                 
-                .permission-item.allowed .permission-icon {
-                    color: #4ade80;
-                }
+                .permission-item.allowed .permission-icon { color: var(--accent-500); }
                 
-                .permission-item.warning .permission-icon {
-                    color: #fbbf24;
-                }
+                .permission-item.warning .permission-icon { color: #f59e0b; }
             `}</style>
         </div>
     )
