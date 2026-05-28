@@ -70,128 +70,138 @@ func DefaultConfig() *Config {
 func getDefaultPrompts() map[string]map[string]string {
 	return map[string]map[string]string{
 		"email": {
-			"grammar": `You are an expert editor specializing in professional email communication.
+			"grammar": `You are an expert email editor. Your job is to fix grammar, spelling, punctuation, and awkward phrasing while keeping the original meaning intact.
 
-TASK: Fix all grammar, spelling, punctuation, and awkward phrasing in this email while preserving the original meaning, intent, and structure.
+TASK: Correct the email below. Preserve the original structure, intent, and all factual information.
 
-RULES:
-- ONLY fix errors in the text provided - do not add or remove content
-- Preserve the email structure: greeting, body paragraphs, and sign-off
-- If the input lacks a proper greeting or sign-off, add appropriate ones based on context
-- Use **bold** for key terms, deadlines, and action items
-- Maintain a professional but approachable business tone
-- Preserve all factual information exactly as stated
-- NEVER add conversational filler or explanations
-- NEVER use XML tags, HTML, or any markup in your response
+FORMATTING RULES:
+- Start with a Subject line on its own line if one is needed
+- Separate the greeting, each body paragraph, and the sign-off with a blank line
+- Use **bold** for deadlines, dates, action items, and key names
+- Use - bullet lists for multiple items, requests, or action points
+- Keep paragraphs short (2-4 sentences max)
+- Use a professional but approachable tone
+- Do NOT wrap the email in code fences or quotes
+- Do NOT add explanations, notes, or commentary — just the email
 
-OUTPUT: Return ONLY the corrected email as plain text. Nothing before or after.`,
+OUTPUT: The complete corrected email with proper paragraph spacing.`,
 
-			"paraphrase": `You are an expert writer specializing in professional communication.
+			"paraphrase": `You are an expert email writer. Rewrite the email below using different words and sentence structures while keeping the exact same meaning and all factual details.
 
-TASK: Rewrite this email using different words and sentence structures while preserving the exact same meaning, intent, and key information.
+TASK: Produce a fresh version of this email with varied vocabulary and restructured sentences.
 
-RULES:
-- Keep the original structure: greeting, body, sign-off
-- Use varied vocabulary and restructured sentences
-- Preserve all facts, names, dates, deadlines, and action items
-- Maintain a professional business tone
-- Use **bold** for key terms and important points
-- Do not add new information or remove existing content
-- NEVER add conversational filler or explanations
+FORMATTING RULES:
+- Start with a Subject line if relevant
+- Separate greeting, body paragraphs, and sign-off with blank lines
+- Use **bold** for deadlines, dates, action items, and key names
+- Use - bullet lists for multiple items or requests
+- Keep paragraphs to 2-4 sentences
+- Match the original tone but vary the wording
+- Do NOT wrap the email in code fences or quotes
+- Do NOT add explanations — just the rewritten email
 
-OUTPUT: Return ONLY the rewritten email. Nothing before or after.`,
+OUTPUT: The rewritten email with proper paragraph spacing.`,
 
-			"standard": `You are a professional writer specializing in clear, effective communication.
+			"standard": `You are a professional email writer. Rewrite the email below to be clear, natural, well-structured, and ready to send.
 
-TASK: Rewrite this email to be clear, natural, and well-structured while preserving the original meaning.
+TASK: Improve clarity, flow, and structure while keeping the original meaning.
 
-RULES:
-- Improve clarity, flow, and readability
-- Remove redundant words and awkward phrasing
-- Keep the greeting, body, and sign-off structure
-- Use **bold** for key terms, deadlines, and action items
-- Maintain a professional but approachable business tone
-- Preserve all factual information exactly as stated
-- NEVER add conversational filler or explanations
+FORMATTING RULES:
+- Start with a Subject line
+- Blank line between greeting, each paragraph, and sign-off
+- Use **bold** for deadlines, dates, action items, and key names
+- Use - bullet lists for multiple items, requests, or steps
+- Keep paragraphs short and scannable (2-4 sentences)
+- Professional but approachable business tone
+- Do NOT wrap the email in code fences or quotes
+- Do NOT add explanations — just the email
 
-OUTPUT: Return ONLY the rewritten email. Nothing before or after.`,
+OUTPUT: The polished email with clean paragraph breaks.`,
 
-			"formal": `You are a business communication expert specializing in formal correspondence.
+			"formal": `You are a formal business correspondence expert. Rewrite this email in an elevated, professional tone suitable for executives, clients, or official communication.
 
-TASK: Rewrite this email in a highly formal, professional tone suitable for official or senior-level communication.
+TASK: Produce a polished formal version with precise vocabulary and proper structure.
 
-RULES:
-- If the input has a greeting/sign-off, make them formal (e.g., "Dear [Name]," / "Sincerely,"). If not, do not add any.
-- Replace contractions with full forms (do not, cannot, I am)
-- Use precise, elevated vocabulary and formal sentence structures
-- Avoid colloquialisms, slang, idioms, and casual expressions
-- Use **bold** for key terms and important references
-- Maintain all factual information, names, dates, and deadlines
-- NEVER add conversational filler or explanations
-- NEVER invent names, dates, or details not present in the original
+FORMATTING RULES:
+- Start with a Subject line
+- Formal greeting ("Dear [Name]," or "Dear [Title] [Name],")
+- Blank line between greeting, each paragraph, and sign-off
+- Use full words (do not, cannot, I am — no contractions)
+- Use **bold** sparingly for dates, references, and formal action items
+- Use - bullet lists only for structured requirements or agenda items
+- Formal sign-off ("Sincerely," / "Kind regards," / "Respectfully,")
+- Do NOT wrap in code fences
+- Do NOT add explanations
 
-OUTPUT: Return ONLY the formal email. Nothing before or after.`,
+OUTPUT: The formal email with clean structure.`,
 
-			"casual": `You are a friendly writer who excels at warm, approachable communication.
+			"casual": `You are a warm, friendly email writer. Rewrite this email in a casual, conversational tone that still works for workplace communication.
 
-TASK: Rewrite this email in a warm, casual, and conversational tone while keeping it respectful and professional enough for workplace use.
+TASK: Make the email sound natural and approachable while keeping it professional enough for colleagues.
 
-RULES:
-- If the input has a greeting/sign-off, make them casual (e.g., "Hi [Name],"). If not, do not add any.
-- Use contractions and natural conversational language
-- Sound approachable, friendly, and personable
-- Keep it appropriate for workplace communication (not too informal)
-- Use **bold** for key points and action items
-- Preserve all factual information and deadlines
-- NEVER add conversational filler or explanations
-- NEVER invent names, dates, or details not present in the original
+FORMATTING RULES:
+- Start with a casual Subject line if helpful
+- Casual greeting ("Hi [Name]," / "Hey [Name],")
+- Blank line between greeting, each paragraph, and sign-off
+- Use contractions freely (I'm, you'll, it's, etc.)
+- Use **bold** for the one or two most important things
+- Keep it light and friendly — short sentences, natural flow
+- Casual sign-off ("Thanks!", "Cheers,", "Best,")
+- Do NOT wrap in code fences
+- Do NOT add explanations
 
-OUTPUT: Return ONLY the casual email. Nothing before or after.`,
+OUTPUT: The casual email with proper spacing.`,
 
-			"creative": `You are a creative writer who makes emails engaging, memorable, and distinctive.
+			"creative": `You are a creative email writer who makes messages engaging and memorable while staying professional.
 
-TASK: Rewrite this email to be expressive, vivid, and engaging while preserving the core message and maintaining appropriateness for professional use.
+TASK: Rewrite this email to be vivid, distinctive, and enjoyable to read — without being unprofessional.
 
-RULES:
-- Use expressive language, vivid descriptions, and strong verbs
-- Add personality and character without being unprofessional
-- Use **bold** to emphasize key points and important information
-- Keep the greeting, body, and sign-off structure
-- Preserve all factual information, names, and deadlines
-- Make the email stand out and be memorable
-- NEVER add conversational filler or explanations
+FORMATTING RULES:
+- Start with an engaging Subject line
+- Greeting that matches the creative tone
+- Blank line between greeting, each paragraph, and sign-off
+- Use vivid verbs, varied sentence rhythm, and a touch of personality
+- Use **bold** to emphasize key ideas and calls to action
+- Use - bullet lists for punchy, memorable points
+- Keep it appropriate for a workplace audience
+- Do NOT wrap in code fences
+- Do NOT add explanations
 
-OUTPUT: Return ONLY the creative email. Nothing before or after.`,
+OUTPUT: The creative email with clean paragraph breaks.`,
 
-			"short": `You are a concise editor who specializes in tight, efficient writing.
+			"short": `You are a concise email editor. Cut this email down to its essentials — every word must earn its place.
 
-TASK: Shorten this email by removing unnecessary words, redundancy, and filler while preserving ALL key information, meaning, and structure.
+TASK: Remove all redundancy, filler, and unnecessary words. Keep only what matters.
 
-RULES:
-- Remove redundant phrases, filler words, and unnecessary qualifiers
-- Keep the greeting, body, and sign-off structure
-- Preserve ALL facts, names, dates, deadlines, and action items
-- Make every word count - be direct and efficient
-- Use **bold** for the most critical information
-- Do not remove any substantive content
-- NEVER add conversational filler or explanations
+FORMATTING RULES:
+- Start with a brief Subject line if the original has one
+- Keep the greeting (shorten if wordy)
+- Blank line between greeting, body, and sign-off
+- Cut paragraphs to 1-3 sentences max
+- Use **bold** ONLY for the single most critical thing (deadline or action)
+- Use - bullets only if they genuinely shorten the text
+- Preserve ALL names, dates, deadlines, and action items
+- Do NOT wrap in code fences
+- Do NOT add explanations
 
-OUTPUT: Return ONLY the shortened email. Nothing before or after.`,
+OUTPUT: The shortened email — tight, direct, properly spaced.`,
 
-			"expand": `You are an expert writer who excels at adding valuable context and detail.
+			"expand": `You are an email writer who adds helpful context and detail without bloating the message.
 
-TASK: Expand this email by adding relevant context, elaboration, and helpful detail while preserving the original message and intent.
+TASK: Expand this email with relevant background, examples, or elaboration that makes the message clearer and more complete.
 
-RULES:
-- Add relevant context, background, and supporting detail
-- Elaborate on key points with useful examples or explanations
-- Maintain the professional email structure: greeting, body, sign-off
-- Use **bold** for key terms and important action items
-- Do not add irrelevant information or change the core message
-- Make the email more comprehensive and thorough
-- NEVER add conversational filler or explanations
+FORMATTING RULES:
+- Start with a descriptive Subject line
+- Greeting, body paragraphs, sign-off — each separated by a blank line
+- Add 1-3 sentences of context or elaboration per key point
+- Use **bold** for deadlines, dates, and action items
+- Use - bullet lists to organize supporting details or options
+- Keep the original core message intact
+- Do NOT invent facts — only add reasonable, helpful context
+- Do NOT wrap in code fences
+- Do NOT add explanations
 
-OUTPUT: Return ONLY the expanded email. Nothing before or after.`,
+OUTPUT: The expanded email with proper paragraph breaks.`,
 
 			"summarize": `You are a strategic analyst who distills complex information into clear summaries.
 
@@ -1121,27 +1131,53 @@ func (c *Config) Save() error {
 
 // GetPrompt returns the prompt for a given style and text type
 func (c *Config) GetPrompt(style, textType string) string {
+	var prompt string
 	if c.CustomPrompts != nil {
 		if typeMap, ok := c.CustomPrompts[style]; ok {
-			if prompt, ok := typeMap[textType]; ok && prompt != "" {
-				return prompt
+			if p, ok := typeMap[textType]; ok && p != "" {
+				prompt = p
 			}
 		}
 	}
 
-	defaults := getDefaultPrompts()
-	if typeMap, ok := defaults[textType]; ok {
-		if prompt, ok := typeMap[style]; ok {
-			return prompt
+	if prompt == "" {
+		defaults := getDefaultPrompts()
+		if typeMap, ok := defaults[textType]; ok {
+			if p, ok := typeMap[style]; ok {
+				prompt = p
+			}
 		}
 	}
 
-	generic := getGenericPrompts()
-	if prompt, ok := generic[style]; ok {
-		return prompt
+	if prompt == "" {
+		generic := getGenericPrompts()
+		if p, ok := generic[style]; ok {
+			prompt = p
+		}
 	}
-	return generic["standard"]
+	if prompt == "" {
+		prompt = getGenericPrompts()["standard"]
+	}
+
+	// Append anti-slop rules to every prompt
+	return prompt + antiSlopRules
 }
+
+// antiSlopRules removes AI writing tells from generated output.
+// Based on hardikpandya/stop-slop.
+const antiSlopRules = `
+
+ANTI-SLOP RULES (apply to your entire output):
+- No adverbs (-ly words). Kill "really", "just", "actually", "simply".
+- No em dashes. Use commas or periods.
+- Active voice only. Name the human actor. No "the decision was made."
+- No binary contrasts: "Not X, it's Y." State Y directly.
+- No vague declaratives. Name the specific thing, not "the implications are significant."
+- No filler phrases: "Here's the thing", "Let that sink in", "It's worth noting."
+- No business jargon: "leverage"→use, "unpack"→explain, "deep dive"→analyze, "game-changer"→important.
+- Vary sentence rhythm. Two items max per list, never three.
+- No meta-commentary announcing structure ("In this section...").
+- State facts directly. Trust the reader.`
 
 // GetCustomPrompt returns a custom prompt for a given style and text type, or empty if not set
 func (c *Config) GetCustomPrompt(style, textType string) string {
