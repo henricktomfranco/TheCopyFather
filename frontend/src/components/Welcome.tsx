@@ -82,20 +82,20 @@ function Welcome({ onAccept }: WelcomeProps) {
                     height: 64px;
                     margin: 0 auto 20px;
                     background: var(--bg-glass);
-                    backdrop-filter: var(--glass-backdrop);
+                    backdrop-filter: blur(12px);
                     border: 1px solid var(--border-subtle);
                     border-radius: var(--radius-lg);
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    animation: float 3s ease-in-out infinite;
                 }
                 
-                .welcome-header h2 {
-                    font-family: var(--font-display);
+                .welcome-header h1 {
+                    font-family: var(--font-sans);
                     font-size: 24px;
                     font-weight: 600;
                     margin: 0 0 8px 0;
+                    color: var(--text-primary);
                 }
                 
                 .welcome-subtitle {
@@ -129,7 +129,7 @@ function Welcome({ onAccept }: WelcomeProps) {
                 }
                 
                 .welcome-description strong {
-                    color: var(--text-accent);
+                    color: var(--accent-500);
                     font-weight: 600;
                 }
                 
@@ -143,8 +143,8 @@ function Welcome({ onAccept }: WelcomeProps) {
                 .privacy-notice {
                     display: flex;
                     gap: 12px;
-                    background: rgba(99, 102, 241, 0.1);
-                    border: 1px solid rgba(99, 102, 241, 0.2);
+                    background: rgba(16, 185, 129, 0.08);
+                    border: 1px solid rgba(16, 185, 129, 0.15);
                     border-radius: var(--radius-md);
                     padding: 16px;
                     backdrop-filter: blur(10px);
@@ -162,7 +162,7 @@ function Welcome({ onAccept }: WelcomeProps) {
                 }
                 
                 .privacy-text strong {
-                    color: var(--text-accent);
+                    color: var(--accent-500);
                 }
                 
                 .permissions-list {
@@ -201,11 +201,6 @@ function Welcome({ onAccept }: WelcomeProps) {
                 
                 .permission-item.warning .permission-icon {
                     color: #fbbf24;
-                }
-                
-                @keyframes float {
-                    0%, 100% { transform: translateY(0); }
-                    50% { transform: translateY(-8px); }
                 }
             `}</style>
         </div>
