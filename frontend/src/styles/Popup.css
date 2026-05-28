@@ -3,7 +3,7 @@
 .popup-v2 {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100dvh;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -35,7 +35,7 @@ background: var(--bg-secondary);
 .logo-text {
   font-size: 18px;
   font-weight: 600;
-  background: var(--gradient-primary);
+  background: var(--accent-500);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -99,7 +99,7 @@ border-bottom: 1px solid var(--border-subtle);
 }
 
 .mode-btn.active {
-  background: var(--gradient-primary);
+  background: var(--accent-500);
   border-color: transparent;
   color: white;
   box-shadow: var(--shadow-md), var(--shadow-glow);
@@ -155,7 +155,7 @@ overflow: hidden;
 }
 
 .style-trigger.open {
-  border-color: var(--primary-500);
+  border-color: var(--accent-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
@@ -222,7 +222,7 @@ overflow: hidden;
 
 .style-option.active {
   background: var(--gradient-surface);
-  border-left: 3px solid var(--primary-500);
+  border-left: 3px solid var(--accent-500);
 }
 
 .option-icon {
@@ -307,7 +307,7 @@ overflow: hidden;
 
 .text-type-option.active {
   background: var(--gradient-surface);
-  color: var(--primary-400);
+  color: var(--accent-400);
 }
 
 /* Result Section */
@@ -364,7 +364,7 @@ background: var(--bg-tertiary);
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
   background: rgba(59, 130, 246, 0.15);
-  color: var(--primary-400);
+  color: var(--accent-400);
   border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: var(--radius-full);
   font-size: 11px;
@@ -491,7 +491,7 @@ color: var(--text-primary);
 }
 
 .result-content strong {
-  color: var(--primary-400);
+  color: var(--accent-400);
   font-weight: 600;
   background: rgba(59, 130, 246, 0.15);
   padding: 2px 6px;
@@ -637,7 +637,7 @@ background: var(--bg-secondary);
 .checkbox-label input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--primary-500);
+  accent-color: var(--accent-500);
   cursor: pointer;
 }
 
@@ -689,7 +689,7 @@ background: var(--bg-secondary);
   padding: var(--spacing-md);
   font-size: 12px;
   color: var(--text-secondary);
-  border-left: 3px solid var(--primary-500);
+  border-left: 3px solid var(--accent-500);
   background: var(--gradient-surface);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   line-height: 1.6;
@@ -705,7 +705,7 @@ background: var(--bg-secondary);
   padding: var(--spacing-md);
   border-radius: var(--radius-md);
   background: var(--bg-glass);
-  border-left: 3px solid var(--primary-500);
+  border-left: 3px solid var(--accent-500);
 }
 
 .chat-message.user {
@@ -730,7 +730,7 @@ background: var(--bg-secondary);
 }
 
 .chat-sender {
-  color: var(--primary-400);
+  color: var(--accent-400);
 }
 
 .chat-timestamp {
@@ -764,7 +764,7 @@ background: var(--bg-secondary);
   content: "→";
   position: absolute;
   left: 0;
-  color: var(--primary-400);
+  color: var(--accent-400);
   font-weight: bold;
 }
 
@@ -800,7 +800,7 @@ background: var(--bg-secondary);
   content: "•";
   position: absolute;
   left: 0;
-  color: var(--primary-400);
+  color: var(--accent-400);
   font-weight: bold;
 }
 
@@ -809,7 +809,7 @@ background: var(--bg-secondary);
   padding: 2px 6px;
   border-radius: var(--radius-xs);
   font-weight: 600;
-  color: var(--primary-400);
+  color: var(--accent-400);
 }
 
 /* Formatting Toggle */
@@ -833,13 +833,13 @@ background: var(--bg-secondary);
 .formatting-toggle.active {
   background: rgba(59, 130, 246, 0.15);
   border-color: rgba(59, 130, 246, 0.3);
-  color: var(--primary-400);
+  color: var(--accent-400);
 }
 
 /* Rewrite Button */
 .btn-rewrite {
   padding: 4px 12px;
-  background: var(--gradient-primary);
+  background: var(--accent-500);
   border: none;
   border-radius: var(--radius-sm);
   color: white;

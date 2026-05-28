@@ -57,7 +57,7 @@ gap: var(--spacing-md);
   content: '';
   width: 3px;
   height: 16px;
-  background: var(--gradient-primary);
+  background: var(--accent-500);
   border-radius: var(--radius-xs);
 }
 
@@ -200,7 +200,7 @@ gap: var(--spacing-md);
 }
 
 .toggle-switch.active {
-  background: var(--gradient-primary);
+  background: var(--accent-500);
   border-color: transparent;
 }
 
@@ -227,7 +227,7 @@ gap: var(--spacing-md);
 
 .select-input:focus {
   outline: none;
-  border-color: var(--primary-500);
+  border-color: var(--accent-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
@@ -259,7 +259,7 @@ gap: var(--spacing-md);
 
 .prompt-textarea:focus {
   outline: none;
-  border-color: var(--primary-500);
+  border-color: var(--accent-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
@@ -280,7 +280,7 @@ gap: var(--spacing-md);
 }
 
 .btn-save-prompt {
-  background: var(--gradient-primary);
+  background: var(--accent-500);
   color: white;
   border: none;
 }
@@ -385,7 +385,7 @@ gap: var(--spacing-md);
 
 .model-input-group input:focus {
   outline: none;
-  border-color: var(--primary-500);
+  border-color: var(--accent-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
