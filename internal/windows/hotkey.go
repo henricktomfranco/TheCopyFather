@@ -112,6 +112,14 @@ func (h *HotkeyManager) Register(combo string, callback func()) error {
 	return <-errChan
 }
 
+// CurrentHotkey returns the currently registered hotkey combo, or empty string if none.
+func (h *HotkeyManager) CurrentHotkey() string {
+	for k := range h.hotkeys {
+		return k
+	}
+	return ""
+}
+
 // Stop unregisters all hotkeys
 func (h *HotkeyManager) Stop() {
 	if !h.running {

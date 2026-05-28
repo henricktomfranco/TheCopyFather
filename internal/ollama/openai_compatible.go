@@ -1,6 +1,7 @@
 package ollama
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -157,18 +158,15 @@ func (c *OpenAICompatibleClient) GenerateRewrite(ctx context.Context, text, styl
 		return "", fmt.Errorf("no choices returned in response")
 	}
 
-	return result.Choices[0].Message.Content, nil
-}
-
-// OpenAICompatibleStreamResponse represents a single chunk from a streaming response for the frontend
-type OpenAICompatibleStreamResponse struct {
-	Response string
-	Done bool
-	Error error
+	content := strings.TrimSpace(result.Choices[0].Message.Content)
+	if content == "" {
+		return "", fmt.Errorf("empty response from API")
+	}
+	return content, nil
 }
 
 // GenerateStream generates a rewrite and streams the response chunk by chunk
-func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style, systemPrompt string) (<-chan OpenAICompatibleStreamResponse, error) {
+func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style, systemPrompt string) (<-chan ClientStreamResponse, error) {
 	// Sanitize the input text
 	sanitizedText := sanitizeInput(text)
 
@@ -198,7 +196,7 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 	}
 
 	// Create channel for streaming responses
-	outputChan := make(chan OpenAICompatibleStreamResponse, 100)
+	outputChan := make(chan ClientStreamResponse, 100)
 
 	go func() {
 		defer close(outputChan)
@@ -209,7 +207,7 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 				delay := time.Duration(1<<uint(attempt-1)) * time.Second
 				select {
 				case <-ctx.Done():
-					outputChan <- OpenAICompatibleStreamResponse{Error: ctx.Err()}
+					outputChan <- ClientStreamResponse{Error: ctx.Err()}
 					return
 				case <-time.After(delay):
 				}
@@ -239,49 +237,56 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 				lastErr = fmt.Errorf("API error (status %d): %s", resp.StatusCode, errStr)
 				// Don't retry on client errors (4xx)
 				if strings.Contains(lastErr.Error(), "status 4") {
-					outputChan <- OpenAICompatibleStreamResponse{Error: lastErr}
+					outputChan <- ClientStreamResponse{Error: lastErr}
 					return
 				}
 				continue
 			}
 
-			// Process streaming response
-			decoder := json.NewDecoder(resp.Body)
-			for {
-				select {
-				case <-ctx.Done():
-					outputChan <- OpenAICompatibleStreamResponse{Error: ctx.Err()}
+			// Process SSE streaming response (OpenAI format: "data: {...}\n\n")
+			scanner := bufio.NewScanner(resp.Body)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if line == "" {
+					continue
+				}
+				if !strings.HasPrefix(line, "data: ") {
+					continue
+				}
+				data := strings.TrimPrefix(line, "data: ")
+				if data == "[DONE]" {
 					return
-				default:
-					var chunk OpenAIStreamResponse
-					if err := decoder.Decode(&chunk); err != nil {
-						if err == io.EOF {
-							return
-						}
-						outputChan <- OpenAICompatibleStreamResponse{Error: fmt.Errorf("failed to decode stream chunk: %w", err)}
-						return
-					}
+				}
 
-					if len(chunk.Choices) > 0 {
-						content := chunk.Choices[0].Delta.Content
-						if content != "" {
-							outputChan <- OpenAICompatibleStreamResponse{
-								Response: content,
-								Done: chunk.Choices[0].FinishReason != "",
-							}
-						}
-					}
+				var chunk OpenAIStreamResponse
+				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+					outputChan <- ClientStreamResponse{Error: fmt.Errorf("failed to decode stream chunk: %w", err)}
+					return
+				}
 
-					if len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != "" {
-						return
+				if len(chunk.Choices) > 0 {
+					content := chunk.Choices[0].Delta.Content
+					if content != "" {
+						outputChan <- ClientStreamResponse{
+							Response: content,
+							Done: chunk.Choices[0].FinishReason != "",
+						}
 					}
 				}
+
+				if len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != "" {
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				outputChan <- ClientStreamResponse{Error: fmt.Errorf("stream read error: %w", err)}
+				return
 			}
 		}
 
 		// If we exhausted retries
 		if lastErr != nil {
-			outputChan <- OpenAICompatibleStreamResponse{Error: fmt.Errorf("failed after %d attempts: %w", MaxRetries, lastErr)}
+			outputChan <- ClientStreamResponse{Error: fmt.Errorf("failed after %d attempts: %w", MaxRetries, lastErr)}
 		}
 	}()
 

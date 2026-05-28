@@ -74,14 +74,15 @@ func (a *App) startup(ctx context.Context) {
 		go a.checkForUpdates()
 	}
 
-	var client *ollama.Client
 	if a.cfg.UseOpenAICompatible {
-		client = ollama.NewClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
+		client := ollama.NewOpenAICompatibleClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
+		a.ollamaClient = client
+		a.rewriter = rewriter.New(client, a.cfg)
 	} else {
-		client = ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
+		client := ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
+		a.ollamaClient = client
+		a.rewriter = rewriter.New(client, a.cfg)
 	}
-	a.ollamaClient = client
-	a.rewriter = rewriter.New(client, a.cfg)
 
 	a.initWindowsComponents()
 }
@@ -188,16 +189,17 @@ func (a *App) saveSettings(newConfig *config.Config) error {
 		return err
 	}
 
-	var client *ollama.Client
 	if a.cfg.UseOpenAICompatible {
-		client = ollama.NewClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
+		client := ollama.NewOpenAICompatibleClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
+		a.ollamaClient = client
+		a.rewriter = rewriter.New(client, a.cfg)
 	} else {
-		client = ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
+		client := ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
+		a.ollamaClient = client
+		a.rewriter = rewriter.New(client, a.cfg)
 	}
-	a.ollamaClient = client
-	a.rewriter = rewriter.New(client, a.cfg)
 
-	if a.cfg.Hotkey != "" {
+	if a.cfg.Hotkey != "" && a.cfg.Hotkey != a.hotkeyManager.CurrentHotkey() {
 		a.hotkeyManager.Stop()
 		a.hotkeyManager = win.NewHotkeyManager()
 		if err := a.hotkeyManager.Register(a.cfg.Hotkey, func() {
@@ -260,6 +262,8 @@ func (a *App) initWindowsComponents() {
 
 	a.trayManager = win.NewTrayManager()
 	a.trayManager.OnShowSettings(func() {
+		runtime.WindowUnminimise(a.ctx)
+		runtime.WindowShow(a.ctx)
 		runtime.EventsEmit(a.ctx, "window:showsettings")
 	})
 	a.trayManager.OnExit(func() {
@@ -471,12 +475,6 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 26, G: 26, B: 46, A: 255},
-		SingleInstanceLock: &options.SingleInstanceLock{
-			UniqueId: "thecopyfather-app-instance",
-			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
-				// Second instance args are silently ignored — one tray icon is enough
-			},
-		},
 		OnStartup:     app.startup,
 		OnDomReady:    app.domReady,
 		OnBeforeClose: app.beforeClose,
@@ -489,7 +487,7 @@ func main() {
 		},
 		Windows: &wailsWindows.Options{
 			WebviewIsTransparent: false,
-			WindowIsTranslucent:  true,
+			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
 		},
 	})

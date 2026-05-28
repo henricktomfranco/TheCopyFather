@@ -45,12 +45,14 @@ func (s *SettingsService) SaveSettings(newConfig *config.Config) error {
 }
 
 func (s *SettingsService) TestConnection(serverURL, model, apiKey string, useOpenAICompatible bool) (string, error) {
-	var client *ollama.Client
 	if useOpenAICompatible {
-		client = ollama.NewClient(serverURL, model, apiKey)
-	} else {
-		client = ollama.NewClient(serverURL, model, apiKey)
+		client := ollama.NewOpenAICompatibleClient(serverURL, model, apiKey)
+		if err := client.HealthCheck(); err != nil {
+			return "", err
+		}
+		return client.GetVersion(), nil
 	}
+	client := ollama.NewClient(serverURL, model, apiKey)
 	if err := client.HealthCheck(); err != nil {
 		return "", err
 	}
