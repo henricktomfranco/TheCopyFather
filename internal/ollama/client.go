@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+// AIClient is an interface for AI providers (Ollama, OpenAI-compatible)
+type AIClient interface {
+	GenerateRewrite(ctx context.Context, text, style, systemPrompt string) (string, error)
+	GenerateStream(ctx context.Context, text, style, systemPrompt string) (<-chan ClientStreamResponse, error)
+	HealthCheck() error
+	GetVersion() string
+	GetAvailableModels() ([]string, error)
+}
+
 // Client handles communication with the Ollama API
 type Client struct {
 	baseURL string

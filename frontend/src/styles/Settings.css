@@ -1,31 +1,31 @@
 /* Settings V2 Styles - Clean, Organized, Professional */
 
 .settings-v2 {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  overflow: hidden;
+display: flex;
+flex-direction: column;
+height: 100vh;
+background: var(--bg-secondary);
+color: var(--text-primary);
+font-family: var(--font-sans);
+overflow: hidden;
 }
 
 /* Header */
 .settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-xl) var(--spacing-2xl);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
+display: flex;
+align-items: center;
+justify-content: space-between;
+padding: var(--spacing-lg) var(--spacing-xl);
+border-bottom: 1px solid var(--border-default);
+background: var(--bg-tertiary);
 }
 
 .settings-header h2 {
-  font-size: 20px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
+font-size: 20px;
+font-weight: 600;
+display: flex;
+align-items: center;
+gap: var(--spacing-md);
 }
 
 .header-icon {

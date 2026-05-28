@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import * as AppAPI from '../../wailsjs/go/main/App'
+import * as RewriteAPI from '../../wailsjs/go/main/RewriteService'
 import { rewriter as rewriterModels } from '../../wailsjs/go/models'
 import '../styles/DiffView.css'
 
@@ -26,7 +26,7 @@ export default function DiffView({ originalText, rewrittenText, onClose }: DiffV
       }
 
       try {
-        const result = await AppAPI.ComputeDiff(originalText, rewrittenText)
+        const result = await RewriteAPI.ComputeDiff(originalText, rewrittenText)
         setDiffResult(result)
         setDiffHtml(result.html)
         setLoading(false)

@@ -337,11 +337,11 @@ type ListRequest struct {
 }
 
 // scanRow scans a database row into a HistoryEntry
-func scanRow(row interface{ Scan(...) error }) (*HistoryEntry, error) {
+func scanRow(row Scanner) (*HistoryEntry, error) {
 	var entry HistoryEntry
 	var createdAtStr, updatedAtStr string
 
-	err := row.(*sql.Row).Scan(
+	err := row.Scan(
 		&entry.ID,
 		&entry.OriginalText,
 		&entry.RewrittenText,

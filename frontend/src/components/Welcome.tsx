@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import * as runtime from '../../wailsjs/runtime'
+import appIcon from '../assets/appicon.png'
 import '../styles/Popup.css' // Reuse premium styles
 
 interface WelcomeProps {
@@ -17,19 +18,9 @@ function Welcome({ onAccept }: WelcomeProps) {
         <div className="popup modern welcome-screen">
             <div className="welcome-header">
                 <div className="welcome-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="url(#gradient1)"/>
-                        <path d="M2 17l10 5 10-5" stroke="url(#gradient1)"/>
-                        <path d="M2 12l10 5 10-5" stroke="url(#gradient1)"/>
-                        <defs>
-                            <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stopColor="#6366f1" />
-                                <stop offset="100%" stopColor="#8b5cf6" />
-                            </linearGradient>
-                        </defs>
-                    </svg>
+                    <img src={appIcon} alt="CopyFather" style={{ width: 64, height: 64 }} />
                 </div>
-                <h2 className="gradient-text">Welcome to The Copy Father</h2>
+                <h1>Welcome to CopyFather</h1>
                 <p className="welcome-subtitle">Network Access Required</p>
             </div>
 

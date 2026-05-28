@@ -11,100 +11,255 @@ import (
 	"textrewriter/internal/config"
 	"textrewriter/internal/ollama"
 	"textrewriter/internal/rewriter"
+	"textrewriter/internal/updater"
 	win "textrewriter/internal/windows"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	wailsWindows "github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// Version is set at build time via -ldflags "-X main.Version=x.y.z"
+var Version = "dev"
+
 // Constants for magic numbers
 const (
-	// MinClipboardTextLength is the minimum length of clipboard text to trigger processing
-	// This prevents triggering on small selections like single words or characters
 	MinClipboardTextLength = 10
-
-	// ClipboardReadDelay is the delay after simulating copy to allow clipboard update
-	ClipboardReadDelay = 150 * time.Millisecond
-
-	// ClipboardRetryDelay is the additional delay when retrying clipboard read
-	ClipboardRetryDelay = 100 * time.Millisecond
-
-	// WindowHideDelay is the delay to ensure focus returns to original app
-	WindowHideDelay = 200 * time.Millisecond
-
-	// ClipboardSetDelay is the delay after setting clipboard before paste
-	ClipboardSetDelay = 150 * time.Millisecond
-
-	// TextPreviewLength is the length of text preview for logging
-	TextPreviewLength = 50
+	ClipboardReadDelay     = 150 * time.Millisecond
+	ClipboardRetryDelay    = 100 * time.Millisecond
+	WindowHideDelay        = 200 * time.Millisecond
+	ClipboardSetDelay      = 150 * time.Millisecond
+	TextPreviewLength      = 50
 )
 
-// App struct
+// App struct — internal state only. Public frontend-facing methods live on
+// SettingsService, RewriteService, and UpdateService (see services.go).
+// Only clipboard helpers and Quit remain on App itself.
 type App struct {
-	ctx context.Context
-	config *config.Config
-	ollamaClient *ollama.Client
-	rewriter *rewriter.Rewriter
-	hotkeyManager *win.HotkeyManager
-	trayManager *win.TrayManager
-	clipboardManager *win.ClipboardManager
-	quitting bool
+	ctx               context.Context
+	cfg               *config.Config
+	ollamaClient      ollama.AIClient
+	rewriter          *rewriter.Rewriter
+	hotkeyManager     *win.HotkeyManager
+	trayManager       *win.TrayManager
+	clipboardManager  *win.ClipboardManager
+	quitting          bool
 	streamingRequests map[string]context.CancelFunc
 	streamingMu       sync.RWMutex
 }
 
-// NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{}
 }
 
-// startup is called when the app starts
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
+
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.cfg = config.Load()
 
-	// Initialize config
-	a.config = config.Load()
+	// Set version from build if not yet saved (first run after build)
+	if a.cfg.CurrentVersion == "" {
+		a.cfg.CurrentVersion = Version
+	}
 
-	// Initialize Ollama client
-	a.ollamaClient = ollama.NewClient(a.config.ServerURL, a.config.Model, a.config.APIKey)
+	if a.cfg.AutoUpdateEnabled {
+		go a.checkForUpdates()
+	}
 
-	// Initialize rewriter
-	a.rewriter = rewriter.New(a.ollamaClient, a.config)
+	var client *ollama.Client
+	if a.cfg.UseOpenAICompatible {
+		client = ollama.NewClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
+	} else {
+		client = ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
+	}
+	a.ollamaClient = client
+	a.rewriter = rewriter.New(client, a.cfg)
 
-	// Initialize Windows components
 	a.initWindowsComponents()
 }
 
+func (a *App) domReady(ctx context.Context) {
+	// Restore saved window position and size
+	if a.cfg.WindowWidth > 0 && a.cfg.WindowHeight > 0 {
+		runtime.WindowSetSize(ctx, a.cfg.WindowWidth, a.cfg.WindowHeight)
+	}
+	if a.cfg.WindowX != 0 || a.cfg.WindowY != 0 {
+		runtime.WindowSetPosition(ctx, a.cfg.WindowX, a.cfg.WindowY)
+	}
+}
+
+func (a *App) beforeClose(ctx context.Context) bool {
+	if a.quitting {
+		return false
+	}
+	runtime.WindowHide(ctx)
+	return true
+}
+
+func (a *App) shutdown(ctx context.Context) {
+	a.streamingMu.RLock()
+	for _, cancel := range a.streamingRequests {
+		cancel()
+	}
+	a.streamingMu.RUnlock()
+
+	// Persist window position and size
+	if w, h := runtime.WindowGetSize(ctx); w > 0 && h > 0 {
+		a.cfg.WindowWidth = w
+		a.cfg.WindowHeight = h
+	}
+	x, y := runtime.WindowGetPosition(ctx)
+	a.cfg.WindowX = x
+	a.cfg.WindowY = y
+
+	if a.hotkeyManager != nil {
+		a.hotkeyManager.Stop()
+	}
+	if a.clipboardManager != nil {
+		a.clipboardManager.Stop()
+	}
+	if a.trayManager != nil {
+		a.trayManager.Stop()
+	}
+	if a.cfg != nil {
+		a.cfg.Save()
+	}
+}
+
+// ============================================================================
+// PUBLIC CLIPBOARD / WINDOW HELPERS
+// ============================================================================
+
+func (a *App) ApplyRewrite(text string) error {
+	return a.clipboardManager.SetRichText(text, text)
+}
+
+func (a *App) ApplyRewriteAndPaste(text string) error {
+	runtime.WindowHide(a.ctx)
+	time.Sleep(WindowHideDelay)
+
+	if err := a.clipboardManager.SetRichText(text, text); err != nil {
+		return err
+	}
+	time.Sleep(ClipboardSetDelay)
+
+	if err := win.SimulatePaste(); err != nil {
+		runtime.LogError(a.ctx, fmt.Sprintf("Failed to paste: %v", err))
+		return err
+	}
+
+	previewLen := TextPreviewLength
+	if len(text) < TextPreviewLength {
+		previewLen = len(text)
+	}
+	runtime.LogInfo(a.ctx, fmt.Sprintf("Pasted text: %s", text[:previewLen]))
+	return nil
+}
+
+func (a *App) GetCursorPosition() (map[string]int32, error) {
+	x, y, err := win.GetCursorPosition()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]int32{"x": x, "y": y}, nil
+}
+
+func (a *App) Quit() {
+	a.quitting = true
+	a.shutdown(a.ctx)
+	runtime.Quit(a.ctx)
+}
+
+// ============================================================================
+// INTERNAL — SETTINGS (called by SettingsService)
+// ============================================================================
+
+func (a *App) saveSettings(newConfig *config.Config) error {
+	a.cfg = newConfig
+	if err := a.cfg.Save(); err != nil {
+		return err
+	}
+
+	var client *ollama.Client
+	if a.cfg.UseOpenAICompatible {
+		client = ollama.NewClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
+	} else {
+		client = ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
+	}
+	a.ollamaClient = client
+	a.rewriter = rewriter.New(client, a.cfg)
+
+	if a.cfg.Hotkey != "" {
+		a.hotkeyManager.Stop()
+		a.hotkeyManager = win.NewHotkeyManager()
+		if err := a.hotkeyManager.Register(a.cfg.Hotkey, func() {
+			a.onHotkeyTriggered()
+		}); err != nil {
+			runtime.LogError(a.ctx, fmt.Sprintf("Failed to register hotkey after settings change: %v", err))
+			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+				Type:    runtime.ErrorDialog,
+				Title:   "Hotkey Error",
+				Message: fmt.Sprintf("Failed to register hotkey '%s': %v", a.cfg.Hotkey, err),
+			})
+		}
+	}
+
+	if a.clipboardManager != nil {
+		a.clipboardManager.Stop()
+		if a.cfg.MonitorClipboard {
+			a.clipboardManager = win.NewClipboardManager()
+			a.clipboardManager.Start(func(text string) {
+				if len(text) > MinClipboardTextLength {
+					a.onTextSelected(text)
+				}
+			})
+		}
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		runtime.LogError(a.ctx, fmt.Sprintf("Failed to get executable path: %v", err))
+	} else {
+		if err := win.SetAutoStart(a.cfg.AutoStart, exePath); err != nil {
+			runtime.LogError(a.ctx, fmt.Sprintf("Failed to update auto-start setting: %v", err))
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// INTERNAL — WINDOWS / HOTKEY / CLIPBOARD
+// ============================================================================
+
 func (a *App) initWindowsComponents() {
-	// Initialize clipboard manager
 	a.clipboardManager = win.NewClipboardManager()
 
-	// Initialize hotkey manager
 	a.hotkeyManager = win.NewHotkeyManager()
-	err := a.hotkeyManager.Register(a.config.Hotkey, func() {
+	err := a.hotkeyManager.Register(a.cfg.Hotkey, func() {
 		a.onHotkeyTriggered()
 	})
 	if err != nil {
 		runtime.LogError(a.ctx, fmt.Sprintf("Failed to register hotkey: %v", err))
 		runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-			Type: runtime.ErrorDialog,
-			Title: "Hotkey Error",
-			Message: fmt.Sprintf("Failed to register hotkey '%s'. It might be in use by another app.\nError: %v", a.config.Hotkey, err),
+			Type:    runtime.ErrorDialog,
+			Title:   "Hotkey Error",
+			Message: fmt.Sprintf("Failed to register hotkey '%s'. It might be in use by another app.\nError: %v", a.cfg.Hotkey, err),
 		})
 	} else {
-		runtime.LogInfo(a.ctx, fmt.Sprintf("Successfully registered hotkey: %s", a.config.Hotkey))
+		runtime.LogInfo(a.ctx, fmt.Sprintf("Successfully registered hotkey: %s", a.cfg.Hotkey))
 	}
 
-	// Initialize system tray
 	a.trayManager = win.NewTrayManager()
 	a.trayManager.OnShowSettings(func() {
-		// Emit event to show settings
 		runtime.EventsEmit(a.ctx, "window:showsettings")
 	})
 	a.trayManager.OnExit(func() {
@@ -112,10 +267,9 @@ func (a *App) initWindowsComponents() {
 	})
 	a.trayManager.Start()
 
-	// Start clipboard monitoring if enabled
-	if a.config.MonitorClipboard {
+	if a.cfg.MonitorClipboard {
 		a.clipboardManager.Start(func(text string) {
-			if len(text) > MinClipboardTextLength { // Only trigger for substantial text
+			if len(text) > MinClipboardTextLength {
 				a.onTextSelected(text)
 			}
 		})
@@ -125,16 +279,13 @@ func (a *App) initWindowsComponents() {
 func (a *App) onHotkeyTriggered() {
 	runtime.LogInfo(a.ctx, "Hotkey triggered!")
 
-	// Save current clipboard content
 	oldText, err := a.clipboardManager.GetText()
 	if err != nil {
 		oldText = ""
 	}
 
-	// Simulate Ctrl+C to copy selected text
 	if err := win.SimulateCopy(); err != nil {
 		runtime.LogError(a.ctx, fmt.Sprintf("SimulateCopy failed: %v", err))
-		// If simulation fails, just try reading clipboard directly
 		text, err := a.clipboardManager.GetText()
 		if err == nil && text != "" {
 			a.onTextSelected(text)
@@ -142,28 +293,18 @@ func (a *App) onHotkeyTriggered() {
 		return
 	}
 
-	// Read the copied text from clipboard
-	// Increased delay to ensure clipboard is updated even on slower apps
 	time.Sleep(ClipboardReadDelay)
 	text, err := a.clipboardManager.GetText()
 	if err != nil {
 		runtime.LogError(a.ctx, fmt.Sprintf("Failed to get clipboard text: %v", err))
-		// Restore original clipboard
 		a.clipboardManager.SetText(oldText)
 		return
 	}
-
-	// Note: We intentionally do NOT restore the old clipboard here.
-	// The user selected text and pressed the hotkey to copy it, so the
-	// newly copied text should remain in the clipboard for their use.
-	// If we restored oldText, it would undo their copy operation.
 
 	if text != "" {
 		runtime.LogInfo(a.ctx, fmt.Sprintf("Hotkey captured text length: %d", len(text)))
 		a.onTextSelected(text)
 	} else {
-		// If empty, maybe the user didn't have text selected?
-		// Try one more time with a slightly longer delay
 		time.Sleep(ClipboardRetryDelay)
 		text, err = a.clipboardManager.GetText()
 		if err != nil {
@@ -182,349 +323,31 @@ func (a *App) onHotkeyTriggered() {
 }
 
 func (a *App) onTextSelected(text string) {
-	// Position window near cursor if enabled
-	if a.config.PopupPositionMode == "cursor" {
+	if a.cfg.PopupPositionMode == "cursor" {
 		x, y, err := win.GetCursorPosition()
 		if err == nil {
-			// Offset slightly so cursor doesn't block content
 			windowX := x + 20
 			windowY := y - 100
-
-			// Ensure window stays on screen (basic bounds check)
 			if windowX < 0 {
 				windowX = 10
 			}
 			if windowY < 0 {
 				windowY = 10
 			}
-
 			runtime.WindowSetPosition(a.ctx, int(windowX), int(windowY))
 		}
 	}
 
-	// Ensure the window is visible and active
 	runtime.WindowUnminimise(a.ctx)
 	runtime.WindowShow(a.ctx)
 	runtime.WindowSetAlwaysOnTop(a.ctx, true)
-
-	// Trigger the popup with the selected text
 	runtime.EventsEmit(a.ctx, "text:selected", text)
 }
 
-// RetryRewrite generates a new rewrite for a specific style
-func (a *App) RetryRewrite(text, style string) rewriter.RewriteOption {
-	option, _ := a.rewriter.GenerateSingleRewrite(a.ctx, text, style)
-	return option
-}
+// ============================================================================
+// INTERNAL — STREAMING
+// ============================================================================
 
-// ComputeDiff computes the diff between original and rewritten text
-func (a *App) ComputeDiff(original, rewritten string) rewriter.DiffResult {
-	return a.rewriter.ComputeDiff(original, rewritten)
-}
-
-// ApplyRewrite applies the rewritten text by copying it to clipboard
-func (a *App) ApplyRewrite(text string) error {
-	return a.clipboardManager.SetRichText(text, text)
-}
-
-// ApplyRewriteAndPaste applies the rewritten text by copying it to clipboard and pasting it
-func (a *App) ApplyRewriteAndPaste(text string) error {
-	// First hide the window to return focus to original app
-	runtime.WindowHide(a.ctx)
-
-	// Longer delay to ensure focus returns to original application
-	time.Sleep(WindowHideDelay)
-
-	// Set clipboard text (with rich formatting)
-	if err := a.clipboardManager.SetRichText(text, text); err != nil {
-		return err
-	}
-
-	// Additional delay after setting clipboard
-	time.Sleep(ClipboardSetDelay)
-
-	// Simulate paste operation
-	if err := win.SimulatePaste(); err != nil {
-		runtime.LogError(a.ctx, fmt.Sprintf("Failed to paste: %v", err))
-		return err
-	}
-
-	// Log for debugging
-	previewLen := TextPreviewLength
-	if len(text) < TextPreviewLength {
-		previewLen = len(text)
-	}
-	runtime.LogInfo(a.ctx, fmt.Sprintf("Pasted text: %s", text[:previewLen]))
-
-	return nil
-}
-
-// GetCursorPosition returns the current cursor position
-func (a *App) GetCursorPosition() (map[string]int32, error) {
-	x, y, err := win.GetCursorPosition()
-	if err != nil {
-		return nil, err
-	}
-	return map[string]int32{"x": x, "y": y}, nil
-}
-
-// GetSettings returns the current settings
-func (a *App) GetSettings() *config.Config {
-	return a.config
-}
-
-// SaveSettings saves new settings
-func (a *App) SaveSettings(newConfig *config.Config) error {
-	// Update config
-	a.config = newConfig
-
-	// Save to disk
-	if err := a.config.Save(); err != nil {
-		return err
-	}
-
-	// Reinitialize Ollama client with new settings
-	a.ollamaClient = ollama.NewClient(a.config.ServerURL, a.config.Model, a.config.APIKey)
-	a.rewriter = rewriter.New(a.ollamaClient, a.config)
-
-	// Update hotkey if changed
-	if a.config.Hotkey != "" {
-		a.hotkeyManager.Stop()
-		a.hotkeyManager = win.NewHotkeyManager()
-		if err := a.hotkeyManager.Register(a.config.Hotkey, func() {
-			a.onHotkeyTriggered()
-		}); err != nil {
-			runtime.LogError(a.ctx, fmt.Sprintf("Failed to register hotkey after settings change: %v", err))
-			runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-				Type: runtime.ErrorDialog,
-				Title: "Hotkey Error",
-				Message: fmt.Sprintf("Failed to register hotkey '%s': %v", a.config.Hotkey, err),
-			})
-		}
-	}
-
-	// Update clipboard monitor if changed
-	if a.clipboardManager != nil {
-		a.clipboardManager.Stop() // Always stop existing monitor
-		if a.config.MonitorClipboard {
-			// Restart if enabled
-			a.clipboardManager = win.NewClipboardManager() // Re-initialize to be safe
-			a.clipboardManager.Start(func(text string) {
-				if len(text) > MinClipboardTextLength { // Only trigger for substantial text
-					a.onTextSelected(text)
-				}
-			})
-		}
-	}
-
-	// Update auto-start setting
-	exePath, err := os.Executable()
-	if err != nil {
-		runtime.LogError(a.ctx, fmt.Sprintf("Failed to get executable path: %v", err))
-	} else {
-		if err := win.SetAutoStart(a.config.AutoStart, exePath); err != nil {
-			runtime.LogError(a.ctx, fmt.Sprintf("Failed to update auto-start setting: %v", err))
-		}
-	}
-
-	return nil
-}
-
-// GetAvailableModels returns available Ollama models
-func (a *App) GetAvailableModels() ([]string, error) {
-	return a.ollamaClient.GetAvailableModels()
-}
-
-// TestConnection tests the Ollama connection with custom parameters
-func (a *App) TestConnection(serverURL, model, apiKey string) (string, error) {
-	client := ollama.NewClient(serverURL, model, apiKey)
-	err := client.HealthCheck()
-	if err != nil {
-		return "", err
-	}
-	return client.GetVersion(), nil
-}
-
-// GetRewriteStyles returns available rewrite styles
-func (a *App) GetRewriteStyles() []string {
-	return rewriter.RewriteStyles
-}
-
-// GetAnalysisStyles returns available analysis styles
-func (a *App) GetAnalysisStyles() []string {
-	return rewriter.AnalysisStyles
-}
-
-// RetryAnalysis generates a new analysis for a specific style
-func (a *App) RetryAnalysis(text, style string) rewriter.RewriteOption {
-	option, _ := a.rewriter.GenerateSingleAnalysis(a.ctx, text, style)
-	return option
-}
-
-// RetryRewriteWithFormatting generates a new rewrite with optional formatting
-func (a *App) RetryRewriteWithFormatting(text, style string, enableFormatting bool) rewriter.RewriteOption {
-	option, _ := a.rewriter.GenerateSingleRewriteWithFormatting(a.ctx, text, style, enableFormatting)
-	return option
-}
-
-// RetryAnalysisWithFormatting generates a new analysis with optional formatting
-func (a *App) RetryAnalysisWithFormatting(text, style string, enableFormatting bool) rewriter.RewriteOption {
-	option, _ := a.rewriter.GenerateSingleAnalysisWithFormatting(a.ctx, text, style, enableFormatting)
-	return option
-}
-
-// GetStyleInfo returns information about a specific style
-func (a *App) GetStyleInfo(style string) (rewriter.StyleInfoData, bool) {
-	return rewriter.GetStyleInfo(style)
-}
-
-// DetectTextType analyzes text and returns the detected type
-func (a *App) DetectTextType(text string) rewriter.TextTypeDetected {
-	detectedType, confidence := rewriter.DetectTextType(text)
-	info, _ := rewriter.GetTextTypeInfo(detectedType)
-
-	return rewriter.TextTypeDetected{
-		Type:       string(detectedType),
-		Label:      info.Label,
-		Icon:       info.Icon,
-		Confidence: confidence,
-	}
-}
-
-// GetTextTypes returns all available text types
-func (a *App) GetTextTypes() []rewriter.TextTypeInfo {
-	types := rewriter.AllTextTypes()
-	result := make([]rewriter.TextTypeInfo, 0, len(types))
-
-	for _, t := range types {
-		info, _ := rewriter.GetTextTypeInfo(t)
-		result = append(result, rewriter.TextTypeInfo{
-			Type:        string(t),
-			Label:       info.Label,
-			Icon:        info.Icon,
-			Description: info.Description,
-		})
-	}
-
-	return result
-}
-
-// GetAllCustomPrompts returns all custom prompts from config
-func (a *App) GetAllCustomPrompts() map[string]map[string]string {
-	return a.config.GetAllCustomPrompts()
-}
-
-// SetCustomPrompt sets a custom prompt for a specific style and text type
-// Returns error if validation fails
-func (a *App) SetCustomPrompt(style, textType, prompt string) error {
-	if err := a.config.SetCustomPrompt(style, textType, prompt); err != nil {
-		return err
-	}
-	return a.config.Save()
-}
-
-// DeleteCustomPrompt removes a custom prompt for a specific style and text type
-func (a *App) DeleteCustomPrompt(style, textType string) error {
-	a.config.DeleteCustomPrompt(style, textType)
-	return a.config.Save()
-}
-
-// ResetAllCustomPrompts removes all custom prompts
-func (a *App) ResetAllCustomPrompts() error {
-	a.config.CustomPrompts = make(map[string]map[string]string)
-	return a.config.Save()
-}
-
-// GetDefaultPrompt returns the default prompt for a style and text type
-func (a *App) GetDefaultPrompt(style, textType string) string {
-	defaultConfig := config.DefaultConfig()
-	return defaultConfig.GetPrompt(style, textType)
-}
-
-// RetryRewriteWithTextType generates a rewrite with specific text type
-func (a *App) RetryRewriteWithTextType(text, style, textType string, enableFormatting bool) rewriter.RewriteOption {
-	option, _ := a.rewriter.GenerateRewriteWithTextType(a.ctx, text, style, rewriter.TextType(textType), enableFormatting)
-	return option
-}
-
-// RetryAnalysisWithTextType generates an analysis with specific text type
-func (a *App) RetryAnalysisWithTextType(text, style, textType string, enableFormatting bool) rewriter.RewriteOption {
-	option, _ := a.rewriter.GenerateAnalysisWithTextType(a.ctx, text, style, rewriter.TextType(textType), enableFormatting)
-	return option
-}
-
-// StreamRewriteWithFormatting starts a streaming rewrite and emits events to the frontend
-func (a *App) StreamRewriteWithFormatting(requestID, text, style string, enableFormatting bool) {
-	a.registerStream(requestID)
-	go func() {
-		defer a.unregisterStream(requestID)
-
-		streamCtx, cancel := context.WithCancel(a.ctx)
-		a.setStreamCancel(requestID, cancel)
-		defer cancel()
-
-		streamChan, err := a.rewriter.GenerateStreamWithFormatting(streamCtx, text, style, enableFormatting)
-		if err != nil {
-			runtime.EventsEmit(a.ctx, "stream:error:"+requestID, err.Error())
-			return
-		}
-
-		a.streamChunksWithRateLimit(requestID, streamChan)
-	}()
-}
-
-// StreamRewriteWithTextType starts a streaming rewrite with text type and emits events to the frontend
-func (a *App) StreamRewriteWithTextType(requestID, text, style, textType string, enableFormatting bool) {
-	a.registerStream(requestID)
-	go func() {
-		defer a.unregisterStream(requestID)
-
-		streamCtx, cancel := context.WithCancel(a.ctx)
-		a.setStreamCancel(requestID, cancel)
-		defer cancel()
-
-		streamChan, err := a.rewriter.GenerateStreamWithTextType(streamCtx, text, style, rewriter.TextType(textType), enableFormatting)
-		if err != nil {
-			runtime.EventsEmit(a.ctx, "stream:error:"+requestID, err.Error())
-			return
-		}
-
-		a.streamChunksWithRateLimit(requestID, streamChan)
-	}()
-}
-
-// StreamAnalysisWithTextType starts a streaming analysis with text type and emits events to the frontend
-func (a *App) StreamAnalysisWithTextType(requestID, text, style, textType string, enableFormatting bool) {
-	a.registerStream(requestID)
-	go func() {
-		defer a.unregisterStream(requestID)
-
-		streamCtx, cancel := context.WithCancel(a.ctx)
-		a.setStreamCancel(requestID, cancel)
-		defer cancel()
-
-		streamChan, err := a.rewriter.GenerateStreamAnalysisWithTextType(streamCtx, text, style, rewriter.TextType(textType), enableFormatting)
-		if err != nil {
-			runtime.EventsEmit(a.ctx, "stream:error:"+requestID, err.Error())
-			return
-		}
-
-		a.streamChunksWithRateLimit(requestID, streamChan)
-	}()
-}
-
-// CancelStream cancels an active streaming request
-func (a *App) CancelStream(requestID string) {
-	a.streamingMu.RLock()
-	cancel, exists := a.streamingRequests[requestID]
-	a.streamingMu.RUnlock()
-
-	if exists {
-		cancel()
-	}
-}
-
-// registerStream registers a new streaming request
 func (a *App) registerStream(requestID string) {
 	a.streamingMu.Lock()
 	defer a.streamingMu.Unlock()
@@ -533,21 +356,27 @@ func (a *App) registerStream(requestID string) {
 	}
 }
 
-// setStreamCancel stores the cancel function for a request
 func (a *App) setStreamCancel(requestID string, cancel context.CancelFunc) {
 	a.streamingMu.Lock()
 	defer a.streamingMu.Unlock()
 	a.streamingRequests[requestID] = cancel
 }
 
-// unregisterStream removes a streaming request
 func (a *App) unregisterStream(requestID string) {
 	a.streamingMu.Lock()
 	defer a.streamingMu.Unlock()
 	delete(a.streamingRequests, requestID)
 }
 
-// streamChunksWithRateLimit reads from stream channel and emits events with rate limiting
+func (a *App) cancelStream(requestID string) {
+	a.streamingMu.RLock()
+	cancel, exists := a.streamingRequests[requestID]
+	a.streamingMu.RUnlock()
+	if exists {
+		cancel()
+	}
+}
+
 func (a *App) streamChunksWithRateLimit(requestID string, streamChan <-chan rewriter.StreamChunk) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -598,77 +427,70 @@ func (a *App) streamChunksWithRateLimit(requestID string, streamChan <-chan rewr
 	}
 }
 
-// domReady is called after front-end resources have been loaded
-func (a *App) domReady(ctx context.Context) {
-	// Add your action here
+// ============================================================================
+// INTERNAL — UPDATES
+// ============================================================================
+
+func (a *App) checkForUpdates() {
+	if a.cfg == nil {
+		runtime.LogError(a.ctx, "Config not loaded, skipping update check")
+		return
+	}
+
+	runtime.LogInfo(a.ctx, fmt.Sprintf("Checking for updates... Current version: %s", a.cfg.CurrentVersion))
+
+	updateInfo := updater.CheckForUpdates(a.cfg.CurrentVersion)
+	if updateInfo.Error != "" {
+		runtime.LogError(a.ctx, fmt.Sprintf("Update check failed: %s", updateInfo.Error))
+		return
+	}
+	if !updateInfo.Available {
+		runtime.LogInfo(a.ctx, "No updates available")
+		return
+	}
+
+	runtime.LogInfo(a.ctx, fmt.Sprintf("Update available: %s (current: %s)", updateInfo.LatestVersion, updateInfo.CurrentVersion))
+	runtime.EventsEmit(a.ctx, "update:available", map[string]string{
+		"currentVersion": updateInfo.CurrentVersion,
+		"latestVersion":  updateInfo.LatestVersion,
+	})
 }
 
-// shutdown is called at application termination
-func (a *App) shutdown(ctx context.Context) {
-	// Cancel all active streaming requests
-	a.streamingMu.RLock()
-	for _, cancel := range a.streamingRequests {
-		cancel()
-	}
-	a.streamingMu.RUnlock()
-
-	// Stop all managers
-	if a.hotkeyManager != nil {
-		a.hotkeyManager.Stop()
-	}
-	if a.clipboardManager != nil {
-		a.clipboardManager.Stop()
-	}
-	if a.trayManager != nil {
-		a.trayManager.Stop()
-	}
-
-	// Save config
-	if a.config != nil {
-		a.config.Save()
-	}
-}
-
-// beforeClose is called when the application is about to quit
-func (a *App) beforeClose(ctx context.Context) bool {
-	if a.quitting {
-		return false
-	}
-	runtime.WindowHide(ctx)
-	return true
-}
-
-// Quit terminates the application normally
-func (a *App) Quit() {
-	a.quitting = true
-	a.shutdown(a.ctx)
-	runtime.Quit(a.ctx)
-}
+// ============================================================================
+// MAIN
+// ============================================================================
 
 func main() {
-	// Create an instance of the app structure
 	app := NewApp()
 
-	// Create application with options
 	err := wails.Run(&options.App{
-		Title: "The Copyfather",
-		Width: 500,
+		Title:  "The Copyfather",
+		Width:  500,
 		Height: 700,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 10, G: 10, B: 15, A: 0},
-		OnStartup: app.startup,
-		OnDomReady: app.domReady,
-		OnBeforeClose: app.beforeClose,
-		OnShutdown: app.shutdown,
-		Bind: []interface{}{
-			app,
+		BackgroundColour: &options.RGBA{R: 26, G: 26, B: 46, A: 255},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "thecopyfather-app-instance",
+			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
+				// Second instance args are silently ignored — one tray icon is enough
+			},
 		},
-		Windows: &windows.Options{
-			WebviewIsTransparent: true,
-			WindowIsTranslucent: true,
-			DisableWindowIcon: false,
+		OnStartup:     app.startup,
+		OnDomReady:    app.domReady,
+		OnBeforeClose: app.beforeClose,
+		OnShutdown:    app.shutdown,
+		Bind: []interface{}{
+			app, // ApplyRewrite, ApplyRewriteAndPaste, GetCursorPosition, Quit
+			&SettingsService{app: app},
+			&RewriteService{app: app},
+			&UpdateService{app: app},
+		},
+		Windows: &wailsWindows.Options{
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  true,
+			DisableWindowIcon:    false,
 		},
 	})
 

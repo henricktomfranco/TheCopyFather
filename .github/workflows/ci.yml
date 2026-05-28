@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Check Wails bindings are up-to-date
+        run: |
+          wails generate
+          git diff --exit-code -- frontend/wailsjs/ || (
+            echo "::error::Wails bindings are stale. Run 'wails generate' and commit the changes."
+            exit 1
+          )
+
+      - name: Vet Go code
+        run: go vet ./...
+
+      - name: Run Go tests
+        run: go test ./... -count=1 -timeout 120s
+
+      - name: Build
+        run: |
+          wails build -ldflags "-X main.Version=ci-${GITHUB_SHA::7} -X textrewriter/internal/updater.GitHubRepo=${{ github.repository }}"

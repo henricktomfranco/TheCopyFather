@@ -6,12 +6,64 @@ import MiniMode from './components/MiniMode'
 import DiffView from './components/DiffView'
 import * as runtime from '../wailsjs/runtime'
 import * as AppAPI from '../wailsjs/go/main/App'
+import * as SettingsAPI from '../wailsjs/go/main/SettingsService'
+import * as RewriteAPI from '../wailsjs/go/main/RewriteService'
 import { config as configModels, rewriter as rewriterModels } from '../wailsjs/go/models'
 import './styles/main.css'
 
 export type View = 'popup' | 'settings' | 'welcome' | 'mini' | 'diff'
 
-export type Config = configModels.Config
+// Config type for app state (all fields optional to allow partial updates)
+export interface Config {
+// From configModels.Config
+server_url?: string;
+model?: string;
+api_key?: string;
+default_style?: string;
+auto_start?: boolean;
+hotkey?: string;
+monitor_clipboard?: boolean;
+first_run?: boolean;
+custom_prompts?: Record<string, any>;
+auto_paste_mode?: string;
+popup_position_mode?: string;
+mini_mode?: boolean;
+auto_minimize_on_copy?: boolean;
+// Auto-update settings
+autoUpdateEnabled?: boolean;
+currentVersion?: string;
+updateChannel?: string;
+// OpenAI-compatible settings
+useOpenAICompatible?: boolean;
+openAIBaseURL?: string;
+openAIModel?: string;
+openAIAPIKey?: string;
+}
+
+// Helper to convert partial Config to full Config
+const toFullConfig = (config: Config): configModels.Config => {
+return {
+autoUpdateEnabled: config.autoUpdateEnabled ?? false,
+currentVersion: config.currentVersion ?? '',
+updateChannel: config.updateChannel ?? '',
+useOpenAICompatible: config.useOpenAICompatible ?? false,
+openAIBaseURL: config.openAIBaseURL ?? '',
+openAIModel: config.openAIModel ?? '',
+openAIAPIKey: config.openAIAPIKey ?? '',
+server_url: config.server_url ?? '',
+model: config.model ?? '',
+api_key: config.api_key,
+default_style: config.default_style ?? '',
+auto_start: config.auto_start ?? false,
+hotkey: config.hotkey ?? '',
+monitor_clipboard: config.monitor_clipboard ?? false,
+first_run: config.first_run ?? false,
+auto_paste_mode: config.auto_paste_mode ?? '',
+popup_position_mode: config.popup_position_mode ?? '',
+mini_mode: config.mini_mode ?? false,
+auto_minimize_on_copy: config.auto_minimize_on_copy ?? false,
+};
+};
 
 export interface TextTypeInfo {
   Type: string
@@ -45,7 +97,7 @@ function App() {
       setMiniModeResult('')
       
       try {
-        const config = await AppAPI.GetSettings()
+        const config = await SettingsAPI.GetSettings()
         const useMini = config?.mini_mode ?? false
         setCurrentView(prev => {
           if (prev === 'welcome') return 'welcome'
@@ -73,7 +125,7 @@ function App() {
 
   const loadSettings = async () => {
     try {
-      const config = await AppAPI.GetSettings()
+      const config = await SettingsAPI.GetSettings()
       setSettings(config)
       if (config.first_run) {
         setCurrentView('welcome')
@@ -93,9 +145,9 @@ function App() {
   }
 
 const handleSaveSettings = async (newSettings: Config) => {
-    try {
-      await AppAPI.SaveSettings(newSettings)
-      setSettings(newSettings)
+try {
+await SettingsAPI.SaveSettings(toFullConfig(newSettings))
+setSettings(newSettings)
       if (selectedText) {
         setCurrentView('popup')
       }
@@ -106,7 +158,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const loadCustomPrompts = async (): Promise<Record<string, Record<string, string>>> => {
     try {
-      const prompts = await AppAPI.GetAllCustomPrompts()
+      const prompts = await RewriteAPI.GetAllCustomPrompts()
       return prompts || {}
     } catch (error) {
       console.error('Failed to load custom prompts:', error)
@@ -116,7 +168,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const saveCustomPrompt = async (style: string, textType: string, prompt: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      await AppAPI.SetCustomPrompt(style, textType, prompt)
+      await RewriteAPI.SetCustomPrompt(style, textType, prompt)
       return { success: true }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to save custom prompt'
@@ -127,7 +179,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const deleteCustomPrompt = async (style: string, textType: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      await AppAPI.DeleteCustomPrompt(style, textType)
+      await RewriteAPI.DeleteCustomPrompt(style, textType)
       return { success: true }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to delete custom prompt'
@@ -138,7 +190,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const resetAllCustomPrompts = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      await AppAPI.ResetAllCustomPrompts()
+      await RewriteAPI.ResetAllCustomPrompts()
       return { success: true }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to reset all prompts'
@@ -149,7 +201,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const getDefaultPrompt = async (style: string, textType: string): Promise<string> => {
     try {
-      const prompt = await AppAPI.GetDefaultPrompt(style, textType)
+      const prompt = await RewriteAPI.GetDefaultPrompt(style, textType)
       return prompt
     } catch (error) {
       console.error('Failed to get default prompt:', error)
@@ -159,7 +211,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const loadRewriteStyles = async (): Promise<string[]> => {
     try {
-      const styles = await AppAPI.GetRewriteStyles()
+      const styles = await RewriteAPI.GetRewriteStyles()
       return styles || []
     } catch (error) {
       console.error('Failed to load rewrite styles:', error)
@@ -169,7 +221,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const loadAnalysisStyles = async (): Promise<string[]> => {
     try {
-      const styles = await AppAPI.GetAnalysisStyles()
+      const styles = await RewriteAPI.GetAnalysisStyles()
       return styles || []
     } catch (error) {
       console.error('Failed to load analysis styles:', error)
@@ -179,7 +231,7 @@ const handleSaveSettings = async (newSettings: Config) => {
 
   const loadTextTypes = async (): Promise<rewriterModels.TextTypeInfo[]> => {
     try {
-      const types = await AppAPI.GetTextTypes()
+      const types = await RewriteAPI.GetTextTypes()
       return types || []
     } catch (error) {
       console.error('Failed to load text types:', error)
@@ -244,7 +296,7 @@ const handleSaveSettings = async (newSettings: Config) => {
           reject(new Error(errMsg))
         })
 
-        AppAPI.StreamRewriteWithFormatting(requestID, selectedText, style, true)
+        RewriteAPI.StreamRewriteWithFormatting(requestID, selectedText, style, true)
       })
 
       if (resultText) {
@@ -280,21 +332,21 @@ const handleSaveSettings = async (newSettings: Config) => {
         <Welcome onAccept={handleAcceptFirstRun} />
       )}
 
-      {currentView === 'mini' && settings && (
-        <MiniMode
-          originalText={selectedText}
-          currentStyle={settings.default_style}
-          onExpand={handleMiniModeExpand}
-          onClose={handleClose}
-          onStyleChange={(style) => {
-            const newSettings = { ...settings, default_style: style }
-            handleSaveSettings(newSettings)
-          }}
-          onQuickRewrite={() => handleMiniModeRewrite(settings.default_style)}
-          availableStyles={rewriteStylesList}
-          isGenerating={isGenerating}
-        />
-      )}
+{currentView === 'mini' && settings && (
+<MiniMode
+originalText={selectedText}
+currentStyle={settings.default_style ?? ''}
+onExpand={handleMiniModeExpand}
+onClose={handleClose}
+onStyleChange={(style) => {
+const newSettings = { ...settings, default_style: style }
+handleSaveSettings(newSettings)
+}}
+onQuickRewrite={() => handleMiniModeRewrite(settings.default_style ?? '')}
+availableStyles={rewriteStylesList}
+isGenerating={isGenerating}
+/>
+)}
 
       {currentView === 'popup' && settings && (
         <Popup

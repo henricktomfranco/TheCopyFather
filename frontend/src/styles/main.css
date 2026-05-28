@@ -30,24 +30,24 @@
   --error-500: #ef4444;
   --error-600: #dc2626;
 
-  /* Dark Theme Backgrounds */
-  --bg-primary: #0f0f1a;
-  --bg-secondary: #1a1a2e;
-  --bg-tertiary: #252542;
-  --bg-elevated: #2d2d44;
-  --bg-glass: rgba(255, 255, 255, 0.05);
-  --bg-glass-hover: rgba(255, 255, 255, 0.08);
+/* Dark Theme Backgrounds */
+--bg-primary: #0a0a14;
+--bg-secondary: #161625;
+--bg-tertiary: #1e1e32;
+--bg-elevated: #2a2a44;
+--bg-glass: #1e1e32;
+--bg-glass-hover: #2a2a44;
 
-  /* Text Colors */
-  --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --text-muted: #52525b;
+/* Text Colors */
+--text-primary: #f0f0f5;
+--text-secondary: #c4c4d0;
+--text-tertiary: #9a9ab0;
+--text-muted: #6b6b85;
 
-  /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.1);
-  --border-focus: rgba(59, 130, 246, 0.5);
+/* Borders */
+--border-subtle: rgba(255, 255, 255, 0.08);
+--border-default: rgba(255, 255, 255, 0.15);
+--border-focus: rgba(99, 102, 241, 0.6);
 
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);

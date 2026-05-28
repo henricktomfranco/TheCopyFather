@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import * as runtime from '../../wailsjs/runtime'
 import * as AppAPI from '../../wailsjs/go/main/App'
+import * as SettingsAPI from '../../wailsjs/go/main/SettingsService'
+import * as RewriteAPI from '../../wailsjs/go/main/RewriteService'
+import appIcon from '../assets/appicon.png'
 import { rewriter as rewriterModels } from '../../wailsjs/go/models'
 import '../styles/main.css'
 import '../styles/Popup.css'
@@ -99,7 +102,7 @@ export default function Popup({
   useEffect(() => {
     return () => {
       if (activeRequestIDRef.current) {
-        AppAPI.CancelStream(activeRequestIDRef.current)
+        RewriteAPI.CancelStream(activeRequestIDRef.current)
         activeRequestIDRef.current = null
       }
       if (cleanupRef.current) {
@@ -118,7 +121,7 @@ export default function Popup({
     useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settings = await AppAPI.GetSettings()
+        const settings = await SettingsAPI.GetSettings()
         if (settings) {
           setAutoPasteMode(settings.auto_paste_mode || 'ask')
         }
@@ -132,12 +135,12 @@ export default function Popup({
     useEffect(() => {
     const loadTextTypesAndDetect = async () => {
       try {
-        const types = await AppAPI.GetTextTypes()
+        const types = await RewriteAPI.GetTextTypes()
         setAvailableTextTypes(types)
 
         if (originalText) {
           setIsDetecting(true)
-          const detected = await AppAPI.DetectTextType(originalText)
+          const detected = await RewriteAPI.DetectTextType(originalText)
           setDetectedTextType(detected)
           setSelectedTextType(detected.type)
           setIsDetecting(false)
@@ -178,7 +181,7 @@ export default function Popup({
     }
 
     if (activeRequestIDRef.current) {
-      AppAPI.CancelStream(activeRequestIDRef.current)
+      RewriteAPI.CancelStream(activeRequestIDRef.current)
       if (cleanupRef.current) {
         cleanupRef.current()
         cleanupRef.current = null
@@ -237,15 +240,15 @@ export default function Popup({
 
         if (targetMainMode === 'analyze') {
           if (useTypeSpecific) {
-            AppAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
+            RewriteAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
           } else {
-            AppAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, 'normal', currentFormatting)
+            RewriteAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, 'normal', currentFormatting)
           }
         } else {
           if (useTypeSpecific) {
-            AppAPI.StreamRewriteWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
+            RewriteAPI.StreamRewriteWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
           } else {
-            AppAPI.StreamRewriteWithFormatting(requestID, originalText, targetStyle, currentFormatting)
+            RewriteAPI.StreamRewriteWithFormatting(requestID, originalText, targetStyle, currentFormatting)
           }
         }
       })
@@ -279,7 +282,7 @@ export default function Popup({
   useEffect(() => {
     if (!originalText) return
 
-    runtime.WindowSetSize(460, 620)
+    runtime.WindowSetSize(500, 680)
     runtime.WindowSetAlwaysOnTop(true)
     runtime.WindowShow()
 
@@ -392,7 +395,7 @@ export default function Popup({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
 
-      const settings = await AppAPI.GetSettings()
+      const settings = await SettingsAPI.GetSettings()
       if (settings?.auto_minimize_on_copy) {
         setTimeout(() => {
           runtime.WindowMinimise()
@@ -426,9 +429,9 @@ export default function Popup({
   const handlePasteConfirm = async () => {
     if (dontAskAgain) {
       try {
-        const settings = await AppAPI.GetSettings()
+        const settings = await SettingsAPI.GetSettings()
         settings.auto_paste_mode = 'always'
-        await AppAPI.SaveSettings(settings)
+        await SettingsAPI.SaveSettings(settings)
         setAutoPasteMode('always')
       } catch (e) {
         console.error('Failed to save settings:', e)
@@ -449,9 +452,9 @@ export default function Popup({
   const handlePasteCancel = async () => {
     if (dontAskAgain) {
       try {
-        const settings = await AppAPI.GetSettings()
+        const settings = await SettingsAPI.GetSettings()
         settings.auto_paste_mode = 'never'
-        await AppAPI.SaveSettings(settings)
+        await SettingsAPI.SaveSettings(settings)
         setAutoPasteMode('never')
       } catch (e) {
         console.error('Failed to save settings:', e)
@@ -591,32 +594,32 @@ export default function Popup({
 
       return (
         <div className="email-container">
-          {emailParts.map((part, i) => {
-            const partContent = part.content.split(/(\*\*[^*]+\*\*)/g)
-            const renderPart = (
-              <>
-                {partContent.map((segment, j) => {
-                  if (segment && segment.startsWith('**') && segment.endsWith('**')) {
-                    return <strong key={j}>{segment.slice(2, -2)}</strong>
-                  }
-                  return segment
-                })}
-              </>
-            )
+           {emailParts.map((part, i) => {
+             const partContent = part.content.split(/(\*\*[^*]+\*\*)/g)
+             const renderPart = (
+               <>
+                 {partContent.map((segment, j) => {
+                   if (segment && segment.startsWith('**') && segment.endsWith('**')) {
+                     return <strong key={j}>{segment.slice(2, -2)}</strong>
+                   }
+                   return segment
+                 })}
+               </>
+             )
 
-            switch (part.type) {
-              case 'greeting':
-                return <div key={i} className="email-greeting">{renderPart}</div>
-              case 'body':
-                return <div key={i} className="email-body"><p>{renderPart}</p></div>
-              case 'closing':
-                return <div key={i} className="email-closing"><div className="email-closing-text">{renderPart}</div></div>
-              case 'signature':
-                return <div key={i} className="email-signature">{renderPart}</div>
-              default:
-                return <p key={i}>{renderPart}</p>
-            }
-          })}
+             switch (part.type) {
+               case 'greeting':
+                 return <div key={i} className="email-greeting">{renderPart}</div>
+               case 'body':
+                 return <p key={i} className="email-body">{renderPart}</p>
+               case 'closing':
+                 return <div key={i} className="email-closing"><div className="email-closing-text">{renderPart}</div></div>
+               case 'signature':
+                 return <div key={i} className="email-signature">{renderPart}</div>
+               default:
+                 return <p key={i}>{renderPart}</p>
+             }
+           })}
         </div>
       )
     }
@@ -642,7 +645,7 @@ export default function Popup({
       <header className="popup-header">
         <div className="header-left">
           <div className="logo">
-            <span className="logo-icon">🎯</span>
+            <img src={appIcon} alt="CopyFather" className="logo-icon" />
             <span className="logo-text">CopyFather</span>
           </div>
         </div>
@@ -825,11 +828,12 @@ export default function Popup({
                 {renderContent(result)}
               </div>
             ) : loading ? (
-              <div className="skeleton-loader">
-                <div className="skeleton-line"></div>
-                <div className="skeleton-line"></div>
-                <div className="skeleton-line short"></div>
-              </div>
+<div className="skeleton-loader">
+<div className="skeleton-line"></div>
+<div className="skeleton-line medium"></div>
+<div className="skeleton-line"></div>
+<div className="skeleton-line short"></div>
+</div>
             ) : null}
           </div>
         </div>

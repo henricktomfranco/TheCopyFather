@@ -3,6 +3,7 @@ package rewriter
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"textrewriter/internal/config"
 	"textrewriter/internal/ollama"
@@ -12,20 +13,20 @@ import (
 
 // ToneAnalysis represents the result of tone/readability analysis
 type ToneAnalysis struct {
-	Tone            string  `json:"tone"`
-	ToneLabel       string  `json:"tone_label"`
-	ReadingLevel    string  `json:"reading_level"`
-	WordCount       int     `json:"word_count"`
-	SentenceCount   int     `json:"sentence_count"`
-	AvgWordLength   float64 `json:"avg_word_length"`
-	AvgSentenceLen  float64 `json:"avg_sentence_len"`
-	FleschScore     float64 `json:"flesch_score"`
-	LongestWord     string  `json:"longest_word"`
+	Tone           string  `json:"tone"`
+	ToneLabel      string  `json:"tone_label"`
+	ReadingLevel   string  `json:"reading_level"`
+	WordCount      int     `json:"word_count"`
+	SentenceCount  int     `json:"sentence_count"`
+	AvgWordLength  float64 `json:"avg_word_length"`
+	AvgSentenceLen float64 `json:"avg_sentence_len"`
+	FleschScore    float64 `json:"flesch_score"`
+	LongestWord    string  `json:"longest_word"`
 }
 
 // Rewriter handles text rewriting operations
 type Rewriter struct {
-	client *ollama.Client
+	client ollama.AIClient
 	config *config.Config
 	dmp    *diffmatchpatch.DiffMatchPatch
 }
@@ -63,10 +64,10 @@ type TextTypeDetected struct {
 
 // StyleSuggestion represents a suggested style based on text analysis
 type StyleSuggestion struct {
-	DetectedType TextType  `json:"detected_type"`
-	SuggestedStyle string  `json:"suggested_style"`
-	Confidence    float64 `json:"confidence"`
-	Reason        string  `json:"reason"`
+	DetectedType   TextType `json:"detected_type"`
+	SuggestedStyle string   `json:"suggested_style"`
+	Confidence     float64  `json:"confidence"`
+	Reason         string   `json:"reason"`
 }
 
 // RewriteStyles contains all available rewrite styles
@@ -105,7 +106,7 @@ var StyleInfo = map[string]StyleInfoData{
 }
 
 // New creates a new Rewriter instance
-func New(client *ollama.Client, cfg *config.Config) *Rewriter {
+func New(client ollama.AIClient, cfg *config.Config) *Rewriter {
 	return &Rewriter{
 		client: client,
 		config: cfg,
@@ -555,7 +556,6 @@ func cleanResponse(text string) string {
 		"rewritten text:",
 		"answer:",
 		"here you go:",
-		"here is",
 		"i've rewritten",
 		"i have rewritten",
 		"below is",
@@ -610,7 +610,22 @@ func cleanResponse(text string) string {
 		}
 	}
 
-	// 6. Final cleanup
+	// 6. Normalize whitespace
+	// Preserve paragraph breaks (double newlines) while normalizing spaces within lines
+	// First, normalize multiple consecutive newlines to exactly double newlines
+	text = regexp.MustCompile(`\n{3,}`).ReplaceAllString(text, "\n\n")
+	// Then, for each line, normalize spaces/tabs to single space and trim
+	lines := strings.Split(text, "\n")
+	for i := range lines {
+		lines[i] = strings.Join(strings.Fields(lines[i]), " ")
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	// Join lines back with single newlines (paragraphs will be separated by \n\n from above)
+	text = strings.Join(lines, "\n")
+	// Finally, ensure we don't have leading/trailing whitespace
+	text = strings.TrimSpace(text)
+
+	// 7. Final cleanup
 	return strings.TrimSpace(text)
 }
 

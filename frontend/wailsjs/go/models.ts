@@ -14,6 +14,17 @@ export namespace config {
 	    popup_position_mode: string;
 	    mini_mode: boolean;
 	    auto_minimize_on_copy: boolean;
+	    window_width?: number;
+	    window_height?: number;
+	    window_x?: number;
+	    window_y?: number;
+	    autoUpdateEnabled: boolean;
+	    currentVersion: string;
+	    updateChannel: string;
+	    useOpenAICompatible: boolean;
+	    openAIBaseURL: string;
+	    openAIModel: string;
+	    openAIAPIKey?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -34,6 +45,17 @@ export namespace config {
 	        this.popup_position_mode = source["popup_position_mode"];
 	        this.mini_mode = source["mini_mode"];
 	        this.auto_minimize_on_copy = source["auto_minimize_on_copy"];
+	        this.window_width = source["window_width"];
+	        this.window_height = source["window_height"];
+	        this.window_x = source["window_x"];
+	        this.window_y = source["window_y"];
+	        this.autoUpdateEnabled = source["autoUpdateEnabled"];
+	        this.currentVersion = source["currentVersion"];
+	        this.updateChannel = source["updateChannel"];
+	        this.useOpenAICompatible = source["useOpenAICompatible"];
+	        this.openAIBaseURL = source["openAIBaseURL"];
+	        this.openAIModel = source["openAIModel"];
+	        this.openAIAPIKey = source["openAIAPIKey"];
 	    }
 	}
 
