@@ -885,12 +885,14 @@ func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-ch
 	outputChan := make(chan StreamChunk, 100)
 	go func() {
 		defer close(outputChan)
+		var fullText strings.Builder
 		for resp := range streamChan {
 			if resp.Error != nil {
 				outputChan <- StreamChunk{Error: resp.Error.Error()}
 				return
 			}
-			cleaned := cleanResponse(resp.Response)
+			fullText.WriteString(resp.Response)
+			cleaned := cleanResponse(fullText.String())
 			if cleaned != "" {
 				outputChan <- StreamChunk{Text: cleaned}
 			}
@@ -1003,12 +1005,14 @@ func (r *Rewriter) GenerateStreamAnalysis(ctx context.Context, text, style strin
 	outputChan := make(chan StreamChunk, 100)
 	go func() {
 		defer close(outputChan)
+		var fullText strings.Builder
 		for resp := range streamChan {
 			if resp.Error != nil {
 				outputChan <- StreamChunk{Error: resp.Error.Error()}
 				return
 			}
-			cleaned := cleanResponse(resp.Response)
+			fullText.WriteString(resp.Response)
+			cleaned := cleanResponse(fullText.String())
 			if cleaned != "" {
 				outputChan <- StreamChunk{Text: cleaned}
 			}

@@ -387,19 +387,19 @@ func (a *App) streamChunksWithRateLimit(requestID string, streamChan <-chan rewr
 
 	var lastText string
 	var pending bool
-	var done bool
 	var errMsg string
 
-	emitPending := func() {
+	emitPending := func(forceDone bool) {
 		if pending {
 			pending = false
 			if errMsg != "" {
 				runtime.EventsEmit(a.ctx, "stream:error:"+requestID, errMsg)
-			} else if done {
-				runtime.EventsEmit(a.ctx, "stream:done:"+requestID, true)
 			} else {
 				runtime.EventsEmit(a.ctx, "stream:chunk:"+requestID, lastText)
 			}
+		}
+		if forceDone {
+			runtime.EventsEmit(a.ctx, "stream:done:"+requestID, true)
 		}
 	}
 
@@ -407,26 +407,27 @@ func (a *App) streamChunksWithRateLimit(requestID string, streamChan <-chan rewr
 		select {
 		case chunk, ok := <-streamChan:
 			if !ok {
-				emitPending()
+				emitPending(false)
 				return
 			}
 			if chunk.Error != "" {
 				errMsg = chunk.Error
 				pending = true
-				emitPending()
+				emitPending(false)
 				return
 			}
 			if chunk.Done {
-				lastText = chunk.Text
-				done = true
-				pending = true
-				emitPending()
+				// Flush any pending text BEFORE sending done signal
+				if chunk.Text != "" {
+					lastText = chunk.Text
+				}
+				emitPending(true)
 				return
 			}
 			lastText = chunk.Text
 			pending = true
 		case <-ticker.C:
-			emitPending()
+			emitPending(false)
 		}
 	}
 }
