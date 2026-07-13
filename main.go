@@ -402,7 +402,7 @@ func (a *App) streamChunksWithRateLimit(requestID string, streamChan <-chan rewr
 		select {
 		case chunk, ok := <-streamChan:
 			if !ok {
-				emitPending(false)
+				emitPending(true)
 				return
 			}
 			if chunk.Error != "" {

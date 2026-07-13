@@ -252,9 +252,7 @@ func mathRound(val float64, decimals int) float64 {
 	return float64(int(val*pow+0.5)) / pow
 }
 
-// GenerateRewrites is deprecated. Use GenerateSingleRewrite or GenerateSingleRewriteWithFormatting instead.
-// This method generated all styles simultaneously which was inefficient.
-// Kept for backward compatibility but will be removed in a future version.
+
 
 // GenerateSingleRewrite generates a rewrite for a specific style
 func (r *Rewriter) GenerateSingleRewrite(ctx context.Context, text, style string) (RewriteOption, error) {
@@ -279,9 +277,7 @@ func (r *Rewriter) GenerateSingleRewrite(ctx context.Context, text, style string
 	}, nil
 }
 
-// GenerateAnalysis is deprecated. Use GenerateSingleAnalysis or GenerateSingleAnalysisWithFormatting instead.
-// This method generated all analysis styles simultaneously which was inefficient.
-// Kept for backward compatibility but will be removed in a future version.
+
 
 // GenerateSingleAnalysis generates an analysis for a specific style
 func (r *Rewriter) GenerateSingleAnalysis(ctx context.Context, text, style string) (RewriteOption, error) {
