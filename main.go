@@ -46,6 +46,7 @@ type App struct {
 	ollamaClient      ollama.AIClient
 	rewriter          *rewriter.Rewriter
 	hotkeyManager     *win.HotkeyManager
+	ghostHotkeyManager *win.HotkeyManager
 	trayManager       *win.TrayManager
 	clipboardManager  *win.ClipboardManager
 	quitting          bool
@@ -209,6 +210,16 @@ func (a *App) saveSettings(newConfig *config.Config) error {
 		}
 	}
 
+	if a.cfg.GhostHotkey != "" && a.ghostHotkeyManager != nil && a.cfg.GhostHotkey != a.ghostHotkeyManager.CurrentHotkey() {
+		a.ghostHotkeyManager.Stop()
+		a.ghostHotkeyManager = win.NewHotkeyManager()
+		if err := a.ghostHotkeyManager.Register(a.cfg.GhostHotkey, func() {
+			a.onGhostHotkeyTriggered()
+		}); err != nil {
+			runtime.LogError(a.ctx, fmt.Sprintf("Failed to register ghost hotkey after settings change: %v", err))
+		}
+	}
+
 	if a.clipboardManager != nil {
 		a.clipboardManager.Stop()
 		if a.cfg.MonitorClipboard {
@@ -253,6 +264,18 @@ func (a *App) initWindowsComponents() {
 		})
 	} else {
 		runtime.LogInfo(a.ctx, fmt.Sprintf("Successfully registered hotkey: %s", a.cfg.Hotkey))
+	}
+
+	a.ghostHotkeyManager = win.NewHotkeyManager()
+	if a.cfg.GhostHotkey != "" {
+		err = a.ghostHotkeyManager.Register(a.cfg.GhostHotkey, func() {
+			a.onGhostHotkeyTriggered()
+		})
+		if err != nil {
+			runtime.LogError(a.ctx, fmt.Sprintf("Failed to register ghost hotkey: %v", err))
+		} else {
+			runtime.LogInfo(a.ctx, fmt.Sprintf("Successfully registered ghost hotkey: %s", a.cfg.GhostHotkey))
+		}
 	}
 
 	a.trayManager = win.NewTrayManager()
@@ -325,6 +348,70 @@ func (a *App) onHotkeyTriggered() {
 			runtime.LogWarning(a.ctx, "Hotkey triggered but no text was captured")
 		}
 	}
+}
+
+func (a *App) onGhostHotkeyTriggered() {
+	runtime.LogInfo(a.ctx, "Ghost hotkey triggered!")
+
+	oldText, err := a.clipboardManager.GetText()
+	if err != nil {
+		oldText = ""
+	}
+
+	if err := win.SimulateCopy(); err != nil {
+		runtime.LogError(a.ctx, fmt.Sprintf("SimulateCopy failed for ghost: %v", err))
+		return
+	}
+
+	time.Sleep(ClipboardReadDelay)
+	text, err := a.clipboardManager.GetText()
+	if err != nil {
+		runtime.LogError(a.ctx, fmt.Sprintf("Failed to get clipboard text for ghost: %v", err))
+		a.clipboardManager.SetText(oldText)
+		return
+	}
+
+	if text == "" {
+		time.Sleep(ClipboardRetryDelay)
+		text, err = a.clipboardManager.GetText()
+		if err != nil || text == "" {
+			runtime.LogWarning(a.ctx, "Ghost hotkey triggered but no text was captured")
+			return
+		}
+	}
+
+	runtime.LogInfo(a.ctx, fmt.Sprintf("Ghost hotkey captured text length: %d", len(text)))
+
+	// Delete the original text by typing a backspace or just start typing which overwrites highlighted text
+	// Wait, since the text is highlighted (from copy), any keystroke we send will replace it.
+	
+	// Start streaming
+	textTypeInfo := rewriter.TextType(a.cfg.GhostTextType)
+	streamChan, err := a.rewriter.GenerateStreamWithTextType(a.ctx, text, a.cfg.GhostStyle, textTypeInfo, false)
+	if err != nil {
+		runtime.LogError(a.ctx, fmt.Sprintf("Ghost generation failed: %v", err))
+		return
+	}
+
+	go func() {
+		// Restore clipboard early
+		a.clipboardManager.SetText(oldText)
+
+		for chunk := range streamChan {
+			if chunk.Error != "" {
+				runtime.LogError(a.ctx, fmt.Sprintf("Ghost stream error: %v", chunk.Error))
+				break
+			}
+			if chunk.Done {
+				break
+			}
+			if chunk.Text != "" {
+				if err := win.SimulateTypeString(chunk.Text); err != nil {
+					runtime.LogError(a.ctx, fmt.Sprintf("Ghost typing failed: %v", err))
+				}
+			}
+		}
+	}()
 }
 
 func (a *App) onTextSelected(text string) {

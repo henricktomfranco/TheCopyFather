@@ -23,6 +23,10 @@ type Config struct {
 	PopupPositionMode  string                       `json:"popup_position_mode"`
 	MiniMode           bool                         `json:"mini_mode"`
 	AutoMinimizeOnCopy bool                         `json:"auto_minimize_on_copy"`
+	// Ghost Typing Mode settings
+	GhostHotkey   string `json:"ghost_hotkey"`
+	GhostStyle    string `json:"ghost_style"`
+	GhostTextType string `json:"ghost_text_type"`
 	// Window state persistence
 	WindowWidth  int `json:"window_width,omitempty"`
 	WindowHeight int `json:"window_height,omitempty"`
@@ -56,6 +60,10 @@ func DefaultConfig() *Config {
 		PopupPositionMode:  "cursor",
 		MiniMode:           false,
 		AutoMinimizeOnCopy: true,
+		// Ghost Typing Mode defaults
+		GhostHotkey:   "ctrl+shift+g",
+		GhostStyle:    "standard",
+		GhostTextType: "normal",
 		// Auto-update defaults
 		AutoUpdateEnabled: true,
 		CurrentVersion:    "", // Set at build time via -ldflags "-X main.Version=x.y.z"

@@ -14,6 +14,9 @@ export namespace config {
 	    popup_position_mode: string;
 	    mini_mode: boolean;
 	    auto_minimize_on_copy: boolean;
+	    ghost_hotkey: string;
+	    ghost_style: string;
+	    ghost_text_type: string;
 	    window_width?: number;
 	    window_height?: number;
 	    window_x?: number;
@@ -46,6 +49,9 @@ export namespace config {
 	        this.popup_position_mode = source["popup_position_mode"];
 	        this.mini_mode = source["mini_mode"];
 	        this.auto_minimize_on_copy = source["auto_minimize_on_copy"];
+	        this.ghost_hotkey = source["ghost_hotkey"];
+	        this.ghost_style = source["ghost_style"];
+	        this.ghost_text_type = source["ghost_text_type"];
 	        this.window_width = source["window_width"];
 	        this.window_height = source["window_height"];
 	        this.window_x = source["window_x"];

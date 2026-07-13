@@ -29,6 +29,10 @@ auto_paste_mode?: string;
 popup_position_mode?: string;
 mini_mode?: boolean;
 auto_minimize_on_copy?: boolean;
+// Ghost mode settings
+ghost_hotkey?: string;
+ghost_style?: string;
+ghost_text_type?: string;
 // Auto-update settings
 autoUpdateEnabled?: boolean;
 currentVersion?: string;
@@ -65,6 +69,9 @@ auto_paste_mode: config.auto_paste_mode ?? '',
 popup_position_mode: config.popup_position_mode ?? '',
 mini_mode: config.mini_mode ?? false,
 auto_minimize_on_copy: config.auto_minimize_on_copy ?? false,
+ghost_hotkey: config.ghost_hotkey ?? '',
+ghost_style: config.ghost_style ?? '',
+ghost_text_type: config.ghost_text_type ?? '',
 };
 };
 

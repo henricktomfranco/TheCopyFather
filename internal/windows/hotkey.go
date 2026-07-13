@@ -55,6 +55,12 @@ const (
 	VK_ALT     = 0x12
 	VK_C       = 0x43
 	VK_V       = 0x56
+	VK_LWIN    = 0x5B
+	VK_RWIN    = 0x5C
+
+	// KeyEvent flags
+	KEYEVENTF_KEYUP   = 0x0002
+	KEYEVENTF_UNICODE = 0x0004
 )
 
 type INPUT struct {
@@ -211,8 +217,22 @@ func (h *HotkeyManager) listen() {
 	}
 }
 
+// ReleaseModifiers releases common modifier keys to prevent interference
+func ReleaseModifiers() {
+	inputs := []INPUT{
+		{Type: INPUT_KEYBOARD, Ki: KEYBDINPUT{WVK: VK_SHIFT, DwFlags: KEYEVENTF_KEYUP}},
+		{Type: INPUT_KEYBOARD, Ki: KEYBDINPUT{WVK: VK_CONTROL, DwFlags: KEYEVENTF_KEYUP}},
+		{Type: INPUT_KEYBOARD, Ki: KEYBDINPUT{WVK: VK_ALT, DwFlags: KEYEVENTF_KEYUP}},
+		{Type: INPUT_KEYBOARD, Ki: KEYBDINPUT{WVK: VK_LWIN, DwFlags: KEYEVENTF_KEYUP}},
+		{Type: INPUT_KEYBOARD, Ki: KEYBDINPUT{WVK: VK_RWIN, DwFlags: KEYEVENTF_KEYUP}},
+	}
+	sendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(INPUT{}))
+	time.Sleep(50 * time.Millisecond)
+}
+
 // SimulateCopy simulates a Ctrl+C keypress independently
 func SimulateCopy() error {
+	ReleaseModifiers()
 	// Define the input events for Ctrl+C
 	inputs := []INPUT{
 		// Press Ctrl
@@ -243,6 +263,7 @@ func SimulateCopy() error {
 
 // SimulatePaste simulates a Ctrl+V keypress
 func SimulatePaste() error {
+	ReleaseModifiers()
 	// Define the input events for Ctrl+V
 	inputs := []INPUT{
 		// Press Ctrl
@@ -268,6 +289,49 @@ func SimulatePaste() error {
 	// Wait a bit for the paste operation to complete
 	time.Sleep(100 * time.Millisecond)
 
+	return nil
+}
+
+// SimulateTypeString simulates typing a string character by character
+func SimulateTypeString(text string) error {
+	if text == "" {
+		return nil
+	}
+
+	var inputs []INPUT
+	utf16Chars := []rune(text)
+
+	for _, char := range utf16Chars {
+		// Key down
+		inputs = append(inputs, INPUT{
+			Type: INPUT_KEYBOARD,
+			Ki: KEYBDINPUT{
+				WScan:   uint16(char),
+				DwFlags: KEYEVENTF_UNICODE,
+			},
+		})
+		// Key up
+		inputs = append(inputs, INPUT{
+			Type: INPUT_KEYBOARD,
+			Ki: KEYBDINPUT{
+				WScan:   uint16(char),
+				DwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+			},
+		})
+	}
+
+	ret, _, err := sendInput.Call(
+		uintptr(len(inputs)),
+		uintptr(unsafe.Pointer(&inputs[0])),
+		unsafe.Sizeof(INPUT{}),
+	)
+
+	if ret == 0 {
+		return fmt.Errorf("SendInput failed for SimulateTypeString: %v", err)
+	}
+
+	// Small delay to allow the OS to process the keystrokes
+	time.Sleep(10 * time.Millisecond)
 	return nil
 }
 
