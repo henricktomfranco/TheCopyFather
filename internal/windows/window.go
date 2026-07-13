@@ -4,6 +4,7 @@ package windows
 
 import (
 	"runtime"
+	"syscall"
 	"unsafe"
 )
 
@@ -13,6 +14,8 @@ var (
 	procGetDC        = user32.NewProc("GetDC")
 	procReleaseDC    = user32.NewProc("ReleaseDC")
 	procGetDeviceCaps = gdi32.NewProc("GetDeviceCaps")
+	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+	procGetWindowTextW      = user32.NewProc("GetWindowTextW")
 )
 
 const (
@@ -74,4 +77,25 @@ func SetWindowTopMost(hwnd uintptr) error {
 // EnableMainThread ensures code runs on the main thread
 func EnableMainThread() {
 	runtime.LockOSThread()
+}
+
+// GetActiveWindowTitle returns the title of the currently focused window
+func GetActiveWindowTitle() string {
+	hwnd, _, _ := procGetForegroundWindow.Call()
+	if hwnd == 0 {
+		return ""
+	}
+
+	b := make([]uint16, 256)
+	ret, _, _ := procGetWindowTextW.Call(
+		hwnd,
+		uintptr(unsafe.Pointer(&b[0])),
+		uintptr(len(b)),
+	)
+
+	if ret == 0 {
+		return ""
+	}
+
+	return syscall.UTF16ToString(b)
 }

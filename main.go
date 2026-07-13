@@ -278,6 +278,12 @@ func (a *App) initWindowsComponents() {
 func (a *App) onHotkeyTriggered() {
 	runtime.LogInfo(a.ctx, "Hotkey triggered!")
 
+	activeWindow := win.GetActiveWindowTitle()
+	if activeWindow != "" {
+		runtime.LogInfo(a.ctx, fmt.Sprintf("Active window context: %s", activeWindow))
+		runtime.EventsEmit(a.ctx, "context:window", activeWindow)
+	}
+
 	oldText, err := a.clipboardManager.GetText()
 	if err != nil {
 		oldText = ""

@@ -1,25 +1,23 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import * as runtime from '../../wailsjs/runtime'
-import * as AppAPI from '../../wailsjs/go/main/App'
 import * as SettingsAPI from '../../wailsjs/go/main/SettingsService'
 import * as RewriteAPI from '../../wailsjs/go/main/RewriteService'
-import appIcon from '../assets/appicon.png'
 import { rewriter as rewriterModels } from '../../wailsjs/go/models'
 import '../styles/main.css'
 import '../styles/Popup.css'
+
+import { useGenerateRewrite } from '../hooks/useGenerateRewrite'
+import { useClipboardPaste } from '../hooks/useClipboardPaste'
+import { PopupHeader } from './PopupHeader'
+import { StyleSelector } from './StyleSelector'
+import { ResultRenderer } from './ResultRenderer'
+import { ActionFooter } from './ActionFooter'
 
 interface DetectedTextType {
   type: string
   label: string
   icon: string
   confidence: number
-}
-
-interface TextTypeInfo {
-  Type: string
-  Label: string
-  Icon: string
-  Description: string
 }
 
 interface PopupProps {
@@ -67,30 +65,18 @@ export default function Popup({
   const [mainMode, setMainMode] = useState<'rewrite' | 'analyze'>(initialMode)
   const [rewriteStyle, setRewriteStyle] = useState(initialRewriteStyle)
   const [analysisStyle, setAnalysisStyle] = useState(initialAnalysisStyle)
-  const [result, setResult] = useState<string>('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [showPasteDialog, setShowPasteDialog] = useState(false)
-  const [dontAskAgain, setDontAskAgain] = useState(false)
   const [autoPasteMode, setAutoPasteMode] = useState<string>('ask')
+  
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [enableFormatting, setEnableFormatting] = useState(true)
   const enableFormattingRef = useRef(enableFormatting)
-  const styleCacheRef = useRef<Map<string, string>>(new Map())
-  const [confidenceScore, setConfidenceScore] = useState<number | null>(null)
-  const [resultHistory, setResultHistory] = useState<Array<{ text: string; style: string; timestamp: number }>>([])
-  const [variationIndex, setVariationIndex] = useState<number>(-1)
-  const MAX_VARIATIONS = 20
+  
   const [detectedTextType, setDetectedTextType] = useState<DetectedTextType | null>(null)
   const [selectedTextType, setSelectedTextType] = useState<string>('')
   const [availableTextTypes, setAvailableTextTypes] = useState<rewriterModels.TextTypeInfo[]>([])
   const [textTypeDropdownOpen, setTextTypeDropdownOpen] = useState(false)
   const [isDetecting, setIsDetecting] = useState(false)
   const [isUserOverride, setIsUserOverride] = useState(false)
-  const activeRequestIDRef = useRef<string | null>(null)
-  const cleanupRef = useRef<(() => void) | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const textTypeDropdownRef = useRef<HTMLDivElement>(null)
@@ -99,22 +85,49 @@ export default function Popup({
     enableFormattingRef.current = enableFormatting
   }, [enableFormatting])
 
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-        debounceRef.current = null
-      }
-      if (activeRequestIDRef.current) {
-        RewriteAPI.CancelStream(activeRequestIDRef.current)
-        activeRequestIDRef.current = null
-      }
-      if (cleanupRef.current) {
-        cleanupRef.current()
-        cleanupRef.current = null
-      }
-    }
-  }, [])
+  const {
+    result,
+    setResult,
+    loading,
+    error,
+    confidenceScore,
+    setConfidenceScore,
+    resultHistory,
+    setResultHistory,
+    variationIndex,
+    setVariationIndex,
+    generate,
+    debouncedGenerate,
+    handlePrevVariation,
+    handleNextVariation,
+    handleRewrite,
+    shouldUseTextType
+  } = useGenerateRewrite({
+    originalText,
+    selectedTextType,
+    isUserOverride,
+    enableFormattingRef,
+    mainMode,
+    rewriteStyle,
+    analysisStyle
+  })
+
+  const {
+    copied,
+    showPasteDialog,
+    setShowPasteDialog,
+    dontAskAgain,
+    setDontAskAgain,
+    handleCopy,
+    handleReplace,
+    handlePasteConfirm,
+    handlePasteCancel
+  } = useClipboardPaste({
+    result,
+    onClose,
+    autoPasteMode,
+    setAutoPasteMode
+  })
 
   useEffect(() => {
     if (onResultChange) {
@@ -122,7 +135,7 @@ export default function Popup({
     }
   }, [result, onResultChange])
 
-    useEffect(() => {
+  useEffect(() => {
     const loadSettings = async () => {
       try {
         const settings = await SettingsAPI.GetSettings()
@@ -136,7 +149,7 @@ export default function Popup({
     loadSettings()
   }, [])
 
-    useEffect(() => {
+  useEffect(() => {
     const loadTextTypesAndDetect = async () => {
       try {
         const types = await RewriteAPI.GetTextTypes()
@@ -146,7 +159,9 @@ export default function Popup({
           setIsDetecting(true)
           const detected = await RewriteAPI.DetectTextType(originalText)
           setDetectedTextType(detected)
-          setSelectedTextType(detected.type)
+          if (!isUserOverride) {
+            setSelectedTextType(detected.type)
+          }
           setIsDetecting(false)
         }
       } catch (e) {
@@ -155,10 +170,40 @@ export default function Popup({
       }
     }
     loadTextTypesAndDetect()
-  }, [originalText])
+  }, [originalText, isUserOverride])
+
+  useEffect(() => {
+    const unlisten = runtime.EventsOn('context:window', (title: string) => {
+      console.log('Detected window context:', title)
+      const lowerTitle = title.toLowerCase()
+      let mappedType = ''
+      let mappedStyle = ''
+
+      if (lowerTitle.includes('discord') || lowerTitle.includes('slack') || lowerTitle.includes('teams') || lowerTitle.includes('messenger') || lowerTitle.includes('whatsapp')) {
+        mappedType = 'chat'
+        mappedStyle = 'casual'
+      } else if (lowerTitle.includes('outlook') || lowerTitle.includes('mail') || lowerTitle.includes('gmail') || lowerTitle.includes('thunderbird')) {
+        mappedType = 'email'
+        mappedStyle = 'formal'
+      } else if (lowerTitle.includes('word') || lowerTitle.includes('notepad') || lowerTitle.includes('code') || lowerTitle.includes('obsidian')) {
+        mappedType = 'normal'
+        mappedStyle = 'standard'
+      }
+
+      if (mappedType && mappedStyle) {
+        setRewriteStyle(mappedStyle)
+        setSelectedTextType(mappedType)
+        setIsUserOverride(false)
+      }
+    })
+    return () => unlisten()
+  }, [])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false)
+      }
       if (textTypeDropdownRef.current && !textTypeDropdownRef.current.contains(event.target as Node)) {
         setTextTypeDropdownOpen(false)
       }
@@ -166,121 +211,6 @@ export default function Popup({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  const generate = useCallback(async (targetMainMode: string, targetStyle: string, useTextType: boolean = false) => {
-    if (!originalText) return
-
-    const currentFormatting = enableFormattingRef.current
-    const currentTextType = selectedTextType
-    const cache = styleCacheRef.current
-    const cacheKey = `${targetMainMode}-${targetStyle}-${useTextType ? currentTextType : 'auto'}-${currentFormatting}`
-
-    console.log('Generate called:', { targetMainMode, targetStyle, useTextType, selectedTextType: currentTextType, cacheKey, isUserOverride })
-
-    if (cache.has(cacheKey)) {
-      console.log('Using cached result for key:', cacheKey)
-      setResult(cache.get(cacheKey)!)
-      setError(null)
-      return
-    }
-
-    if (activeRequestIDRef.current) {
-      RewriteAPI.CancelStream(activeRequestIDRef.current)
-      if (cleanupRef.current) {
-        cleanupRef.current()
-        cleanupRef.current = null
-      }
-      activeRequestIDRef.current = null
-    }
-
-    setLoading(true)
-    setError(null)
-    setResult('')
-
-    const requestID = crypto.randomUUID()
-    activeRequestIDRef.current = requestID
-
-    const cleanup = () => {
-      runtime.EventsOff(`stream:chunk:${requestID}`)
-      runtime.EventsOff(`stream:done:${requestID}`)
-      runtime.EventsOff(`stream:error:${requestID}`)
-    }
-    cleanupRef.current = cleanup
-
-    try {
-      let generatedText = ''
-      const textTypeToUse = useTextType ? currentTextType : 'normal'
-      const useTypeSpecific = useTextType
-
-      console.log('Using text type specific:', useTypeSpecific, 'Text type:', textTypeToUse)
-
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          cleanup()
-          activeRequestIDRef.current = null
-          reject(new Error('Streaming timeout'))
-        }, 120000)
-
-        runtime.EventsOn(`stream:chunk:${requestID}`, (chunk: string) => {
-          if (chunk) {
-            generatedText = chunk
-            setResult(chunk)
-          }
-        })
-
-        runtime.EventsOn(`stream:done:${requestID}`, () => {
-          clearTimeout(timeout)
-          cleanup()
-          activeRequestIDRef.current = null
-          resolve()
-        })
-
-        runtime.EventsOn(`stream:error:${requestID}`, (errMsg: string) => {
-          clearTimeout(timeout)
-          cleanup()
-          activeRequestIDRef.current = null
-          reject(new Error(errMsg))
-        })
-
-        if (targetMainMode === 'analyze') {
-          if (useTypeSpecific) {
-            RewriteAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
-          } else {
-            RewriteAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, 'normal', currentFormatting)
-          }
-        } else {
-          if (useTypeSpecific) {
-            RewriteAPI.StreamRewriteWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
-          } else {
-            RewriteAPI.StreamRewriteWithFormatting(requestID, originalText, targetStyle, currentFormatting)
-          }
-        }
-      })
-
-      if (generatedText) {
-        cache.set(cacheKey, generatedText)
-        const historyEntry = { text: generatedText, style: targetStyle, timestamp: Date.now() }
-        setResultHistory(prev => {
-          const newHistory = [...prev, historyEntry]
-          if (newHistory.length > MAX_VARIATIONS) {
-            newHistory.shift()
-          }
-          return newHistory
-        })
-        setVariationIndex(prev => {
-          const newIdx = prev + 1
-          return newIdx >= MAX_VARIATIONS ? MAX_VARIATIONS - 1 : newIdx
-        })
-
-        const baseConfidence = targetStyle === 'grammar' ? 0.92 : targetStyle === 'formal' ? 0.88 : targetStyle === 'casual' ? 0.85 : targetStyle === 'creative' ? 0.75 : 0.82
-        setConfidenceScore(Math.round(baseConfidence * 100))
-      }
-    } catch (err) {
-      console.error('Generate error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to connect to AI server')
-    }
-    setLoading(false)
-  }, [originalText, selectedTextType, isUserOverride])
 
   useEffect(() => {
     if (!originalText) return
@@ -305,27 +235,21 @@ export default function Popup({
   }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, isDetecting, detectedTextType, originalText, miniModeResult, rewriteStyle])
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowLeft') {
+        e.preventDefault()
+        handlePrevVariation()
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowRight') {
+        e.preventDefault()
+        handleNextVariation()
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+        e.preventDefault()
+        handleRewrite()
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const debouncedGenerate = useCallback((mode: string, style: string, useTextType: boolean) => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current)
-    }
-    debounceRef.current = setTimeout(() => {
-      generate(mode, style, useTextType)
-    }, 200)
-  }, [generate])
-
-  const shouldUseTextType = () => {
-    return selectedTextType !== '' && selectedTextType !== 'unknown'
-  }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handlePrevVariation, handleNextVariation, handleRewrite])
 
   const handleMainModeChange = (newMode: 'rewrite' | 'analyze') => {
     if (newMode === mainMode) return
@@ -361,417 +285,41 @@ export default function Popup({
     }
   }
 
-  const handlePrevVariation = useCallback(() => {
-    if (variationIndex > 0) {
-      const newIndex = variationIndex - 1
-      setVariationIndex(newIndex)
-      setResult(resultHistory[newIndex].text)
-    }
-  }, [variationIndex, resultHistory])
-
-  const handleNextVariation = useCallback(() => {
-    if (variationIndex < resultHistory.length - 1) {
-      const newIndex = variationIndex + 1
-      setVariationIndex(newIndex)
-      setResult(resultHistory[newIndex].text)
-    }
-  }, [variationIndex, resultHistory])
-
-  const handleRewrite = useCallback(() => {
-    const currentStyle = mainMode === 'analyze' ? analysisStyle : rewriteStyle
-    generate(mainMode, currentStyle, shouldUseTextType())
-  }, [mainMode, analysisStyle, rewriteStyle, generate, shouldUseTextType])
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowLeft') {
-        e.preventDefault()
-        handlePrevVariation()
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowRight') {
-        e.preventDefault()
-        handleNextVariation()
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-        e.preventDefault()
-        handleRewrite()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handlePrevVariation, handleNextVariation, handleRewrite])
-
-  const handleCopy = async () => {
-    if (!result) return
-
-    try {
-      await AppAPI.ApplyRewrite(result)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-
-      const settings = await SettingsAPI.GetSettings()
-      if (settings?.auto_minimize_on_copy) {
-        setTimeout(() => {
-          runtime.WindowMinimise()
-        }, 400)
-      }
-    } catch (err) {
-      console.error('Failed to copy:', err)
-    }
-  }
-
-  const handleReplace = async () => {
-    if (!result) return
-
-    if (autoPasteMode === 'ask') {
-      setShowPasteDialog(true)
-    } else if (autoPasteMode === 'always') {
-      try {
-        await AppAPI.ApplyRewriteAndPaste(result)
-        onClose()
-      } catch (err) {
-        console.error('Failed to paste:', err)
-        await handleCopy()
-        onClose()
-      }
-    } else {
-      await handleCopy()
-      onClose()
-    }
-  }
-
-  const handlePasteConfirm = async () => {
-    if (dontAskAgain) {
-      try {
-        const settings = await SettingsAPI.GetSettings()
-        settings.auto_paste_mode = 'always'
-        await SettingsAPI.SaveSettings(settings)
-        setAutoPasteMode('always')
-      } catch (e) {
-        console.error('Failed to save settings:', e)
-      }
-    }
-
-    setShowPasteDialog(false)
-    try {
-      await AppAPI.ApplyRewriteAndPaste(result)
-      onClose()
-    } catch (err) {
-      console.error('Failed to paste:', err)
-      await handleCopy()
-      onClose()
-    }
-  }
-
-  const handlePasteCancel = async () => {
-    if (dontAskAgain) {
-      try {
-        const settings = await SettingsAPI.GetSettings()
-        settings.auto_paste_mode = 'never'
-        await SettingsAPI.SaveSettings(settings)
-        setAutoPasteMode('never')
-      } catch (e) {
-        console.error('Failed to save settings:', e)
-      }
-    }
-
-    setShowPasteDialog(false)
-    await handleCopy()
-    onClose()
-  }
-
   const currentRewriteStyleData = REWRITE_STYLES.find(s => s.value === rewriteStyle) || REWRITE_STYLES[0]
   const currentAnalysisStyleData = ANALYSIS_STYLES.find(s => s.value === analysisStyle) || ANALYSIS_STYLES[0]
 
-  const renderContent = (text: string) => {
-    if (!text) return null
-    let cleanText = text.replace(/\*\*\*\*/g, '**').replace(/\*([^\s*][^*]*[^\s*])\*/g, '**$1**')
-
-    const lines = cleanText.split('\n')
-    const isBulletList = lines.some(line => line.trim().match(/^[-•\*]\s/))
-    const isNumberedList = lines.some(line => line.trim().match(/^\d+\.\s/))
-
-    if ((isBulletList || isNumberedList) && !mainMode) {
-      return (
-        <div className="document-container">
-          <ul className={`document-list ${isNumberedList ? 'numbered' : ''}`}>
-            {lines.map((line, i) => {
-              const trimmed = line.trim()
-              if (!trimmed) return null
-              const content = trimmed.replace(/^([-•\*]|\d+\.)\s*/, '')
-              const parts = content.split(/(\*\*[^*]+\*\*)/g)
-              return (
-                <li key={i}>
-                  {parts.map((part, j) => {
-                    if (part && part.startsWith('**') && part.endsWith('**')) {
-                      return <strong key={j}>{part.slice(2, -2)}</strong>
-                    }
-                    return part
-                  })}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )
-    }
-
-    const isChatLike = lines.some(line => line.trim().match(/^(User|Assistant|Me|You|Bot|System|Agent):/i))
-
-    if (isChatLike && selectedTextType === 'chat') {
-      return (
-        <div className="chat-container">
-          {lines.map((line, i) => {
-            const trimmed = line.trim()
-            if (!trimmed) return null
-
-            const messageMatch = trimmed.match(/^(User|Assistant|Me|You|Bot|System|Agent):\s*(.*)$/i)
-            if (messageMatch) {
-              const sender = messageMatch[1]
-              const content = messageMatch[2]
-              const isUser = /^(User|Me|You)/i.test(sender)
-
-              return (
-                <div key={i} className={`chat-message ${isUser ? 'user' : 'system'}`}>
-                  <div className="chat-header">
-                    <span className="chat-sender">{sender}</span>
-                    <span className="chat-timestamp">{new Date().toLocaleTimeString()}</span>
-                  </div>
-                  <div className="chat-content">
-                    {content.split(/(\*\*[^*]+\*\*)/g).map((part, j) => {
-                      if (part && part.startsWith('**') && part.endsWith('**')) {
-                        return <strong key={j}>{part.slice(2, -2)}</strong>
-                      }
-                      return part
-                    })}
-                  </div>
-                </div>
-              )
-            }
-
-            return (
-              <div key={i} className="chat-message system">
-                <div className="chat-content">{trimmed}</div>
-              </div>
-            )
-          })}
-        </div>
-      )
-    }
-
-    if (isBulletList && mainMode === 'analyze' && analysisStyle === 'bullets') {
-      return (
-        <ul className="bullet-list">
-          {lines.map((line, i) => {
-            const trimmed = line.trim()
-            if (!trimmed) return null
-            const content = trimmed.replace(/^[-•\*]\s*/, '')
-            const parts = content.split(/(\*\*[^*]+\*\*)/g)
-            return (
-              <li key={i}>
-                {parts.map((part, j) => {
-                  if (part && part.startsWith('**') && part.endsWith('**')) {
-                    return <strong key={j} className="highlight-bold">{part.slice(2, -2)}</strong>
-                  }
-                  return part
-                })}
-              </li>
-            )
-          })}
-        </ul>
-      )
-    }
-
-    const isEmail = cleanText.match(/^(Dear\s|Hi\s|Hello\s|To\s)/i) &&
-      cleanText.match(/(Regards|Sincerely|Thanks|Best|Warm regards|Kind regards|Yours|Cheers)/i)
-
-    if (isEmail) {
-      const paragraphs = cleanText.split(/\n\n+/)
-      const emailParts: { type: string; content: string }[] = []
-
-      let currentIndex = 0
-      for (const para of paragraphs) {
-        const trimmed = para.trim()
-        if (!trimmed) continue
-
-        if (trimmed.match(/^(Dear\s|Hi\s|Hello\s|To\s)/i) && currentIndex === 0) {
-          emailParts.push({ type: 'greeting', content: trimmed })
-        } else if (trimmed.match(/(Regards|Sincerely|Thanks|Best|Warm regards|Kind regards|Yours|Cheers)/i) && trimmed.length < 120) {
-          emailParts.push({ type: 'closing', content: trimmed })
-        } else if (emailParts.some(p => p.type === 'closing') && trimmed.length < 100 && !trimmed.match(/[.!?]\s/)) {
-          emailParts.push({ type: 'signature', content: trimmed })
-        } else {
-          emailParts.push({ type: 'body', content: trimmed })
-        }
-        currentIndex++
-      }
-
-      return (
-        <div className="email-container">
-           {emailParts.map((part, i) => {
-             const partContent = part.content.split(/(\*\*[^*]+\*\*)/g)
-             const renderPart = (
-               <>
-                 {partContent.map((segment, j) => {
-                   if (segment && segment.startsWith('**') && segment.endsWith('**')) {
-                     return <strong key={j}>{segment.slice(2, -2)}</strong>
-                   }
-                   return segment
-                 })}
-               </>
-             )
-
-             switch (part.type) {
-               case 'greeting':
-                 return <div key={i} className="email-greeting">{renderPart}</div>
-               case 'body':
-                 return <p key={i} className="email-body">{renderPart}</p>
-               case 'closing':
-                 return <div key={i} className="email-closing"><div className="email-closing-text">{renderPart}</div></div>
-               case 'signature':
-                 return <div key={i} className="email-signature">{renderPart}</div>
-               default:
-                 return <p key={i}>{renderPart}</p>
-             }
-           })}
-        </div>
-      )
-    }
-
-    return cleanText.split(/\n\n+/).map((para, i) => {
-      const parts = para.split(/(\*\*[^*]+\*\*)/g)
-      return (
-        <p key={i}>
-          {parts.map((part, j) => {
-            if (part && part.startsWith('**') && part.endsWith('**')) {
-              return <strong key={j} className="highlight-bold">{part.slice(2, -2)}</strong>
-            }
-            return part
-          })}
-        </p>
-      )
-    })
-  }
-
   return (
     <div className="popup-v2">
-      {/* Header */}
-      <header className="popup-header">
-        <div className="header-left">
-          <div className="logo">
-            <img src={appIcon} alt="CopyFather" className="logo-icon" />
-            <span className="logo-text">CopyFather</span>
-          </div>
-        </div>
-        <div className="header-right">
-          <button className="icon-btn" onClick={onSettings} title="Settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-          </button>
-          <button className="icon-btn" onClick={onClose} title="Close">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </header>
+      <PopupHeader 
+        onSettings={onSettings}
+        onClose={onClose}
+        mainMode={mainMode}
+        handleMainModeChange={handleMainModeChange}
+      />
 
-      {/* Mode Toggle */}
-      <div className="mode-selector">
-        <button
-          className={`mode-btn ${mainMode === 'rewrite' ? 'active' : ''}`}
-          onClick={() => handleMainModeChange('rewrite')}
-        >
-          <span className="mode-icon">🔄</span>
-          <span className="mode-label">Rewrite</span>
-        </button>
-        <button
-          className={`mode-btn ${mainMode === 'analyze' ? 'active' : ''}`}
-          onClick={() => handleMainModeChange('analyze')}
-        >
-          <span className="mode-icon">📊</span>
-          <span className="mode-label">Analyze</span>
-        </button>
-      </div>
-
-      {/* Content Area */}
       <div className="popup-content">
-        {/* Style Selector */}
-        <div className="style-section" ref={dropdownRef}>
-          <div className="style-dropdown">
-            <button
-              className={`style-trigger ${dropdownOpen ? 'open' : ''}`}
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-            >
-              <span className="style-icon">
-                {mainMode === 'rewrite' ? currentRewriteStyleData.icon : currentAnalysisStyleData.icon}
-              </span>
-              <span className="style-label">
-                {mainMode === 'rewrite' ? currentRewriteStyleData.label : currentAnalysisStyleData.label}
-              </span>
-              <span className="chevron">▼</span>
-            </button>
+        <StyleSelector
+          dropdownRef={dropdownRef}
+          textTypeDropdownRef={textTypeDropdownRef}
+          dropdownOpen={dropdownOpen}
+          setDropdownOpen={setDropdownOpen}
+          textTypeDropdownOpen={textTypeDropdownOpen}
+          setTextTypeDropdownOpen={setTextTypeDropdownOpen}
+          mainMode={mainMode}
+          rewriteStyle={rewriteStyle}
+          analysisStyle={analysisStyle}
+          REWRITE_STYLES={REWRITE_STYLES}
+          ANALYSIS_STYLES={ANALYSIS_STYLES}
+          currentRewriteStyleData={currentRewriteStyleData}
+          currentAnalysisStyleData={currentAnalysisStyleData}
+          handleRewriteStyleChange={handleRewriteStyleChange}
+          handleAnalysisStyleChange={handleAnalysisStyleChange}
+          selectedTextType={selectedTextType}
+          availableTextTypes={availableTextTypes}
+          isUserOverride={isUserOverride}
+          handleTextTypeChange={handleTextTypeChange}
+        />
 
-            {dropdownOpen && (
-              <div className="style-menu">
-                {mainMode === 'rewrite' ? (
-                  REWRITE_STYLES.map(s => (
-                    <button
-                      key={s.value}
-                      className={`style-option ${s.value === rewriteStyle ? 'active' : ''}`}
-                      onClick={() => handleRewriteStyleChange(s.value)}
-                    >
-                      <span className="option-icon">{s.icon}</span>
-                      <div className="option-content">
-                        <span className="option-label">{s.label}</span>
-                        <span className="option-desc">{s.desc}</span>
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  ANALYSIS_STYLES.map(s => (
-                    <button
-                      key={s.value}
-                      className={`style-option ${s.value === analysisStyle ? 'active' : ''}`}
-                      onClick={() => handleAnalysisStyleChange(s.value)}
-                    >
-                      <span className="option-icon">{s.icon}</span>
-                      <div className="option-content">
-                        <span className="option-label">{s.label}</span>
-                        <span className="option-desc">{s.desc}</span>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Text Type Badge */}
-          {selectedTextType && (
-            <div className="text-type-badge" ref={textTypeDropdownRef}>
-              <button
-                className="text-type-trigger"
-                onClick={() => setTextTypeDropdownOpen(!textTypeDropdownOpen)}
-                title={isUserOverride ? 'You selected this type' : 'Auto-detected'}
-              >
-                <span>{availableTextTypes.find(t => t.Type === selectedTextType)?.Icon || '📝'}</span>
-                <span>{availableTextTypes.find(t => t.Type === selectedTextType)?.Label || 'Text'}</span>
-              </button>
-              {textTypeDropdownOpen && (
-                <div className="text-type-menu">
-                  {availableTextTypes.map(t => (
-                    <button
-                      key={t.Type}
-                      className={`text-type-option ${t.Type === selectedTextType ? 'active' : ''}`}
-                      onClick={() => handleTextTypeChange(t.Type)}
-                    >
-                      <span className="option-icon">{t.Icon}</span>
-                      <span className="option-label">{t.Label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Result Area */}
         <div className={`result-section ${loading ? 'loading' : ''}`}>
           <div className="result-header">
             <div className="result-meta">
@@ -837,7 +385,12 @@ export default function Popup({
               </div>
             ) : result ? (
               <div className="result-content">
-                {renderContent(result)}
+                <ResultRenderer 
+                  result={result}
+                  mainMode={mainMode}
+                  analysisStyle={analysisStyle}
+                  selectedTextType={selectedTextType}
+                />
               </div>
             ) : loading ? (
               <div className="skeleton-loader">
@@ -858,68 +411,20 @@ export default function Popup({
         </div>
       </div>
 
-      {/* Footer Actions */}
-      <footer className="popup-footer">
-        <div className="footer-left">
-          <button
-            className="footer-btn"
-            onClick={handleCopy}
-            disabled={loading || !!error || !result}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-          {onShowDiff && (
-            <button
-              className="footer-btn"
-              onClick={() => onShowDiff(result)}
-              disabled={loading || !!error || !result}
-              title="View differences"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
-              Diff
-            </button>
-          )}
-        </div>
-        <button
-          className="btn-replace"
-          onClick={handleReplace}
-          disabled={loading || !!error || !result}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          Replace
-        </button>
-      </footer>
-
-      {/* Paste Dialog */}
-      {showPasteDialog && (
-        <div className="dialog-overlay">
-          <div className="dialog">
-            <div className="dialog-header">
-              <h3>📋 Replace Text?</h3>
-              <p>Automatically paste the rewritten text?</p>
-            </div>
-            <div className="dialog-content">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={dontAskAgain}
-                  onChange={(e) => setDontAskAgain(e.target.checked)}
-                />
-                <span>Don't ask again</span>
-              </label>
-            </div>
-            <div className="dialog-footer">
-              <button className="btn btn-secondary" onClick={handlePasteCancel}>
-                Copy Only
-              </button>
-              <button className="btn btn-primary" onClick={handlePasteConfirm}>
-                ✓ Paste
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ActionFooter 
+        loading={loading}
+        error={error}
+        result={result}
+        copied={copied}
+        handleCopy={handleCopy}
+        onShowDiff={onShowDiff}
+        handleReplace={handleReplace}
+        showPasteDialog={showPasteDialog}
+        dontAskAgain={dontAskAgain}
+        setDontAskAgain={setDontAskAgain}
+        handlePasteCancel={handlePasteCancel}
+        handlePasteConfirm={handlePasteConfirm}
+      />
     </div>
   )
 }
