@@ -88,9 +88,9 @@ export default function Popup({
   const [textTypeDropdownOpen, setTextTypeDropdownOpen] = useState(false)
   const [isDetecting, setIsDetecting] = useState(false)
   const [isUserOverride, setIsUserOverride] = useState(false)
-  const [showOriginal, setShowOriginal] = useState(false)
   const activeRequestIDRef = useRef<string | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const textTypeDropdownRef = useRef<HTMLDivElement>(null)
@@ -101,6 +101,10 @@ export default function Popup({
 
   useEffect(() => {
     return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+        debounceRef.current = null
+      }
       if (activeRequestIDRef.current) {
         RewriteAPI.CancelStream(activeRequestIDRef.current)
         activeRequestIDRef.current = null
@@ -269,8 +273,7 @@ export default function Popup({
         })
 
         const baseConfidence = targetStyle === 'grammar' ? 0.92 : targetStyle === 'formal' ? 0.88 : targetStyle === 'casual' ? 0.85 : targetStyle === 'creative' ? 0.75 : 0.82
-        const confidence = Math.min(0.98, Math.max(0.60, baseConfidence + (Math.random() * 0.1 - 0.05)))
-        setConfidenceScore(Math.round(confidence * 100))
+        setConfidenceScore(Math.round(baseConfidence * 100))
       }
     } catch (err) {
       console.error('Generate error:', err)
@@ -311,6 +314,15 @@ export default function Popup({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const debouncedGenerate = useCallback((mode: string, style: string, useTextType: boolean) => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+    }
+    debounceRef.current = setTimeout(() => {
+      generate(mode, style, useTextType)
+    }, 200)
+  }, [generate])
+
   const shouldUseTextType = () => {
     return selectedTextType !== '' && selectedTextType !== 'unknown'
   }
@@ -320,22 +332,22 @@ export default function Popup({
     setMainMode(newMode)
     const useTextType = shouldUseTextType()
     if (newMode === 'analyze') {
-      generate('analyze', analysisStyle, useTextType)
+      debouncedGenerate('analyze', analysisStyle, useTextType)
     } else {
-      generate('rewrite', rewriteStyle, useTextType)
+      debouncedGenerate('rewrite', rewriteStyle, useTextType)
     }
   }
 
   const handleRewriteStyleChange = (newStyle: string) => {
     setRewriteStyle(newStyle)
     setDropdownOpen(false)
-    generate('rewrite', newStyle, shouldUseTextType())
+    debouncedGenerate('rewrite', newStyle, shouldUseTextType())
   }
 
   const handleAnalysisStyleChange = (newStyle: string) => {
     setAnalysisStyle(newStyle)
     setDropdownOpen(false)
-    generate('analyze', newStyle, shouldUseTextType())
+    debouncedGenerate('analyze', newStyle, shouldUseTextType())
   }
 
   const handleTextTypeChange = (newType: string) => {
@@ -343,9 +355,9 @@ export default function Popup({
     setTextTypeDropdownOpen(false)
     setIsUserOverride(true)
     if (mainMode === 'analyze') {
-      generate('analyze', analysisStyle, true)
+      debouncedGenerate('analyze', analysisStyle, true)
     } else {
-      generate('rewrite', rewriteStyle, true)
+      debouncedGenerate('rewrite', rewriteStyle, true)
     }
   }
 

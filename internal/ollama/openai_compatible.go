@@ -14,79 +14,86 @@ import (
 
 // OpenAICompatibleClient handles communication with OpenAI-compatible APIs (e.g., NVIDIA NIM, LM Studio)
 type OpenAICompatibleClient struct {
-	baseURL string
-	model string
-	apiKey string
-	httpClient *http.Client
+	baseURL          string
+	model            string
+	apiKey           string
+	httpClient       *http.Client
+	disableStreaming bool
 }
 
 // NewOpenAICompatibleClient creates a new OpenAI-compatible API client
 func NewOpenAICompatibleClient(baseURL, model, apiKey string) *OpenAICompatibleClient {
+	return NewOpenAICompatibleClientWithOptions(baseURL, model, apiKey, false)
+}
+
+// NewOpenAICompatibleClientWithOptions creates a new OpenAI-compatible API client with additional options
+func NewOpenAICompatibleClientWithOptions(baseURL, model, apiKey string, disableStreaming bool) *OpenAICompatibleClient {
 	if baseURL == "" {
 		baseURL = "https://integrate.api.nvidia.com/v1"
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &OpenAICompatibleClient{
-		baseURL: baseURL,
-		model: model,
-		apiKey: apiKey,
-		httpClient: &http.Client{Timeout: 120 * time.Second},
+		baseURL:          baseURL,
+		model:            model,
+		apiKey:           apiKey,
+		httpClient:       &http.Client{Timeout: 120 * time.Second},
+		disableStreaming: disableStreaming,
 	}
 }
 
 // OpenAIRequest represents the request body for OpenAI-compatible APIs
 type OpenAIRequest struct {
-	Model string `json:"model"`
-	Messages []Message `json:"messages"`
-	Temperature float64 `json:"temperature,omitempty"`
-	MaxTokens int `json:"max_tokens,omitempty"`
-	Stream bool `json:"stream,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Temperature float64   `json:"temperature,omitempty"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Stream      bool      `json:"stream,omitempty"`
 }
 
 // Message represents a chat message
 type Message struct {
-	Role string `json:"role"`
+	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
 // OpenAIResponse represents the response from OpenAI-compatible APIs
 type OpenAIResponse struct {
-	ID string `json:"id"`
-	Object string `json:"object"`
-	Created int64 `json:"created"`
-	Model string `json:"model"`
+	ID      string   `json:"id"`
+	Object  string   `json:"object"`
+	Created int64    `json:"created"`
+	Model   string   `json:"model"`
 	Choices []Choice `json:"choices"`
-	Usage Usage `json:"usage"`
+	Usage   Usage    `json:"usage"`
 }
 
 // Choice represents a single choice in the response
 type Choice struct {
-	Index int `json:"index"`
-	Message Message `json:"message"`
-	FinishReason string `json:"finish_reason"`
+	Index        int     `json:"index"`
+	Message      Message `json:"message"`
+	FinishReason string  `json:"finish_reason"`
 }
 
 // Usage represents token usage statistics
 type Usage struct {
-	PromptTokens int `json:"prompt_tokens"`
+	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens int `json:"total_tokens"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // OpenAIStreamResponse represents a single chunk from a streaming response
 type OpenAIStreamResponse struct {
-	ID string `json:"id"`
-	Object string `json:"object"`
-	Created int64 `json:"created"`
-	Model string `json:"model"`
+	ID      string         `json:"id"`
+	Object  string         `json:"object"`
+	Created int64          `json:"created"`
+	Model   string         `json:"model"`
 	Choices []StreamChoice `json:"choices"`
 }
 
 // StreamChoice represents a single choice in a streaming response
 type StreamChoice struct {
-	Index int `json:"index"`
-	Delta Message `json:"delta"`
-	FinishReason string `json:"finish_reason"`
+	Index        int     `json:"index"`
+	Delta        Message `json:"delta"`
+	FinishReason string  `json:"finish_reason"`
 }
 
 // GenerateRewrite generates a rewrite of the given text using the specified style
@@ -97,21 +104,21 @@ func (c *OpenAICompatibleClient) GenerateRewrite(ctx context.Context, text, styl
 	// Build messages for OpenAI-compatible API
 	messages := []Message{
 		{
-			Role: "system",
+			Role:    "system",
 			Content: systemPrompt,
 		},
 		{
-			Role: "user",
+			Role:    "user",
 			Content: sanitizedText,
 		},
 	}
 
 	reqBody := OpenAIRequest{
-		Model: c.model,
-		Messages: messages,
+		Model:       c.model,
+		Messages:    messages,
 		Temperature: 0.7,
-		MaxTokens: 4096,
-		Stream: false,
+		MaxTokens:   4096,
+		Stream:      false,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -167,27 +174,32 @@ func (c *OpenAICompatibleClient) GenerateRewrite(ctx context.Context, text, styl
 
 // GenerateStream generates a rewrite and streams the response chunk by chunk
 func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style, systemPrompt string) (<-chan ClientStreamResponse, error) {
+	// When streaming is disabled, fall back to non-streaming
+	if c.disableStreaming {
+		return c.generateNonStreaming(ctx, text, style, systemPrompt)
+	}
+
 	// Sanitize the input text
 	sanitizedText := sanitizeInput(text)
 
 	// Build messages for OpenAI-compatible API
 	messages := []Message{
 		{
-			Role: "system",
+			Role:    "system",
 			Content: systemPrompt,
 		},
 		{
-			Role: "user",
+			Role:    "user",
 			Content: sanitizedText,
 		},
 	}
 
 	reqBody := OpenAIRequest{
-		Model: c.model,
-		Messages: messages,
+		Model:       c.model,
+		Messages:    messages,
 		Temperature: 0.7,
-		MaxTokens: 4096,
-		Stream: true,
+		MaxTokens:   4096,
+		Stream:      true,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -269,7 +281,7 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 					if content != "" {
 						outputChan <- ClientStreamResponse{
 							Response: content,
-							Done: chunk.Choices[0].FinishReason != "",
+							Done:     chunk.Choices[0].FinishReason != "",
 						}
 					}
 				}
@@ -324,19 +336,19 @@ func (c *OpenAICompatibleClient) GetVersion() string {
 
 // ModelInfo represents information about an available model for OpenAI-compatible APIs
 type OpenAIModelInfo struct {
-	ID string `json:"id"`
-	Object string `json:"object"`
-	Created int64 `json:"created"`
-	OwnedBy string `json:"owned_by"`
+	ID         string        `json:"id"`
+	Object     string        `json:"object"`
+	Created    int64         `json:"created"`
+	OwnedBy    string        `json:"owned_by"`
 	Permission []interface{} `json:"permission"`
-	Root interface{} `json:"root,omitempty"`
-	Parent interface{} `json:"parent,omitempty"`
+	Root       interface{}   `json:"root,omitempty"`
+	Parent     interface{}   `json:"parent,omitempty"`
 }
 
 // OpenAIListModelsResponse represents the response from listing models for OpenAI-compatible APIs
 type OpenAIListModelsResponse struct {
-	Object string `json:"object"`
-	Data []OpenAIModelInfo `json:"data"`
+	Object string            `json:"object"`
+	Data   []OpenAIModelInfo `json:"data"`
 }
 
 // GetAvailableModels returns a list of available models from the OpenAI-compatible API
@@ -371,4 +383,19 @@ func (c *OpenAICompatibleClient) GetAvailableModels() ([]string, error) {
 	}
 
 	return models, nil
+}
+
+// generateNonStreaming wraps a non-streaming GenerateRewrite call into the streaming channel interface
+func (c *OpenAICompatibleClient) generateNonStreaming(ctx context.Context, text, style, systemPrompt string) (<-chan ClientStreamResponse, error) {
+	outputChan := make(chan ClientStreamResponse, 1)
+	go func() {
+		defer close(outputChan)
+		result, err := c.GenerateRewrite(ctx, text, style, systemPrompt)
+		if err != nil {
+			outputChan <- ClientStreamResponse{Error: err}
+			return
+		}
+		outputChan <- ClientStreamResponse{Response: result, Done: true}
+	}()
+	return outputChan, nil
 }

@@ -74,16 +74,7 @@ func (a *App) startup(ctx context.Context) {
 		go a.checkForUpdates()
 	}
 
-	if a.cfg.UseOpenAICompatible {
-		client := ollama.NewOpenAICompatibleClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
-		a.ollamaClient = client
-		a.rewriter = rewriter.New(client, a.cfg)
-	} else {
-		client := ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
-		a.ollamaClient = client
-		a.rewriter = rewriter.New(client, a.cfg)
-	}
-
+	a.createClients()
 	a.initWindowsComponents()
 }
 
@@ -183,21 +174,25 @@ func (a *App) Quit() {
 // INTERNAL — SETTINGS (called by SettingsService)
 // ============================================================================
 
+func (a *App) createClients() {
+	if a.cfg.UseOpenAICompatible {
+		client := ollama.NewOpenAICompatibleClientWithOptions(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey, a.cfg.DisableStreaming)
+		a.ollamaClient = client
+		a.rewriter = rewriter.New(client, a.cfg)
+	} else {
+		client := ollama.NewClientWithOptions(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey, a.cfg.DisableStreaming)
+		a.ollamaClient = client
+		a.rewriter = rewriter.New(client, a.cfg)
+	}
+}
+
 func (a *App) saveSettings(newConfig *config.Config) error {
 	a.cfg = newConfig
 	if err := a.cfg.Save(); err != nil {
 		return err
 	}
 
-	if a.cfg.UseOpenAICompatible {
-		client := ollama.NewOpenAICompatibleClient(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey)
-		a.ollamaClient = client
-		a.rewriter = rewriter.New(client, a.cfg)
-	} else {
-		client := ollama.NewClient(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey)
-		a.ollamaClient = client
-		a.rewriter = rewriter.New(client, a.cfg)
-	}
+	a.createClients()
 
 	if a.cfg.Hotkey != "" && a.cfg.Hotkey != a.hotkeyManager.CurrentHotkey() {
 		a.hotkeyManager.Stop()
@@ -476,10 +471,10 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 26, G: 26, B: 46, A: 255},
-		OnStartup:     app.startup,
-		OnDomReady:    app.domReady,
-		OnBeforeClose: app.beforeClose,
-		OnShutdown:    app.shutdown,
+		OnStartup:        app.startup,
+		OnDomReady:       app.domReady,
+		OnBeforeClose:    app.beforeClose,
+		OnShutdown:       app.shutdown,
 		Bind: []interface{}{
 			app, // ApplyRewrite, ApplyRewriteAndPaste, GetCursorPosition, Quit
 			&SettingsService{app: app},

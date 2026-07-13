@@ -39,8 +39,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.AutoUpdateEnabled != true {
 		t.Error("DefaultConfig: Expected AutoUpdateEnabled to be true")
 	}
-	if cfg.CurrentVersion != "1.0.0" {
-		t.Errorf("DefaultConfig: Expected CurrentVersion to be '1.0.0', got '%s'", cfg.CurrentVersion)
+	if cfg.CurrentVersion != "" {
+		t.Errorf("DefaultConfig: Expected CurrentVersion to be empty (set at build time), got '%s'", cfg.CurrentVersion)
 	}
 	if cfg.UpdateChannel != "stable" {
 		t.Errorf("DefaultConfig: Expected UpdateChannel to be 'stable', got '%s'", cfg.UpdateChannel)

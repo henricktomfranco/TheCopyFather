@@ -2,3 +2,7 @@
 .claw/settings.local.json
 .claw/sessions/
 .clawhip/
+.codegraph
+frontend/node_modules
+opencode.exe
+

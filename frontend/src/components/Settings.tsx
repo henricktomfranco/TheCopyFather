@@ -358,6 +358,19 @@ formData.useOpenAICompatible ?? false
         </div>
       </div>
 
+      <div className="settings-section">
+        <div className="toggle-group">
+          <div className="toggle-label">
+            <span>Disable Streaming</span>
+            <small>Some providers/models don't support streaming. Enable this to use non-streaming mode.</small>
+          </div>
+          <div
+            className={`toggle-switch ${formData.disableStreaming ? 'active' : ''}`}
+            onClick={() => handleChange('disableStreaming', !formData.disableStreaming)}
+          />
+        </div>
+      </div>
+
       {!formData.useOpenAICompatible ? (
         <div className="settings-grid">
           <div className="form-group">

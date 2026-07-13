@@ -38,6 +38,8 @@ useOpenAICompatible?: boolean;
 openAIBaseURL?: string;
 openAIModel?: string;
 openAIAPIKey?: string;
+// Streaming settings
+disableStreaming?: boolean;
 }
 
 // Helper to convert partial Config to full Config
@@ -52,8 +54,9 @@ openAIModel: config.openAIModel ?? '',
 openAIAPIKey: config.openAIAPIKey ?? '',
 server_url: config.server_url ?? '',
 model: config.model ?? '',
-api_key: config.api_key,
-default_style: config.default_style ?? '',
+		api_key: config.api_key,
+		disableStreaming: config.disableStreaming ?? false,
+		default_style: config.default_style ?? '',
 auto_start: config.auto_start ?? false,
 hotkey: config.hotkey ?? '',
 monitor_clipboard: config.monitor_clipboard ?? false,

@@ -22,42 +22,49 @@ type AIClient interface {
 
 // Client handles communication with the Ollama API
 type Client struct {
-	baseURL string
-	model string
-	apiKey string
-	version string
-	httpClient *http.Client
+	baseURL          string
+	model            string
+	apiKey           string
+	version          string
+	httpClient       *http.Client
+	disableStreaming bool
 }
 
 // NewClient creates a new Ollama API client
 func NewClient(baseURL, model, apiKey string) *Client {
+	return NewClientWithOptions(baseURL, model, apiKey, false)
+}
+
+// NewClientWithOptions creates a new Ollama API client with additional options
+func NewClientWithOptions(baseURL, model, apiKey string, disableStreaming bool) *Client {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &Client{
-		baseURL: baseURL,
-		model: model,
-		apiKey: apiKey,
-		httpClient: &http.Client{Timeout: 120 * time.Second},
+		baseURL:          baseURL,
+		model:            model,
+		apiKey:           apiKey,
+		httpClient:       &http.Client{Timeout: 120 * time.Second},
+		disableStreaming: disableStreaming,
 	}
 }
 
 // GenerateRequest represents the request body for the generate endpoint
 type GenerateRequest struct {
-	Model string `json:"model"`
-	Prompt string `json:"prompt"`
-	System string `json:"system,omitempty"`
-	Stream bool `json:"stream"`
+	Model   string                 `json:"model"`
+	Prompt  string                 `json:"prompt"`
+	System  string                 `json:"system,omitempty"`
+	Stream  bool                   `json:"stream"`
 	Options map[string]interface{} `json:"options,omitempty"`
 }
 
 // GenerateResponse represents the response from the generate endpoint
 type GenerateResponse struct {
-	Model string `json:"model"`
+	Model    string `json:"model"`
 	Response string `json:"response"`
-	Done bool `json:"done"`
-	Context []int `json:"context,omitempty"`
+	Done     bool   `json:"done"`
+	Context  []int  `json:"context,omitempty"`
 }
 
 // sanitizeInput escapes special XML characters to prevent prompt injection
@@ -170,12 +177,17 @@ func (c *Client) GenerateRewrite(ctx context.Context, text, style, systemPrompt 
 // ClientStreamResponse represents a single chunk from a streaming response
 type ClientStreamResponse struct {
 	Response string `json:"response"`
-	Done bool `json:"done"`
-	Error error `json:"error,omitempty"`
+	Done     bool   `json:"done"`
+	Error    error  `json:"error,omitempty"`
 }
 
 // GenerateStream generates a rewrite and streams the response chunk by chunk
 func (c *Client) GenerateStream(ctx context.Context, text, style, systemPrompt string) (<-chan ClientStreamResponse, error) {
+	// When streaming is disabled, fall back to non-streaming
+	if c.disableStreaming {
+		return c.generateNonStreaming(ctx, text, style, systemPrompt)
+	}
+
 	// Validate text length
 	if len(text) > MaxTextLength {
 		return nil, fmt.Errorf("text too long: %d characters (max %d)", len(text), MaxTextLength)
@@ -267,7 +279,7 @@ func (c *Client) GenerateStream(ctx context.Context, text, style, systemPrompt s
 
 					outputChan <- ClientStreamResponse{
 						Response: chunk.Response,
-						Done: chunk.Done,
+						Done:     chunk.Done,
 					}
 
 					if chunk.Done {
@@ -297,13 +309,13 @@ func (c *Client) buildGenerateRequest(prompt, systemPrompt string) GenerateReque
 	}
 
 	return GenerateRequest{
-		Model: c.model,
+		Model:  c.model,
 		Prompt: actualPrompt,
 		System: actualSystemPrompt,
 		Stream: false,
 		Options: map[string]interface{}{
 			"temperature": 0.7,
-			"top_p": 0.9,
+			"top_p":       0.9,
 		},
 	}
 }
@@ -324,7 +336,7 @@ func (c *Client) isLegacyVersion() bool {
 
 // ModelInfo represents information about an available model
 type ModelInfo struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
 	Digest string `json:"digest,omitempty"`
 }
 
@@ -438,4 +450,19 @@ func (c *Client) HealthCheck() error {
 // GetVersion returns the cached version
 func (c *Client) GetVersion() string {
 	return c.version
+}
+
+// generateNonStreaming wraps a non-streaming GenerateRewrite call into the streaming channel interface
+func (c *Client) generateNonStreaming(ctx context.Context, text, style, systemPrompt string) (<-chan ClientStreamResponse, error) {
+	outputChan := make(chan ClientStreamResponse, 1)
+	go func() {
+		defer close(outputChan)
+		result, err := c.GenerateRewrite(ctx, text, style, systemPrompt)
+		if err != nil {
+			outputChan <- ClientStreamResponse{Error: err}
+			return
+		}
+		outputChan <- ClientStreamResponse{Response: result, Done: true}
+	}()
+	return outputChan, nil
 }

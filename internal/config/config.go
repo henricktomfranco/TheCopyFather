@@ -10,59 +10,63 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	ServerURL string `json:"server_url"`
-	Model string `json:"model"`
-	APIKey string `json:"api_key,omitempty"`
-	DefaultStyle string `json:"default_style"`
-	AutoStart bool `json:"auto_start"`
-	Hotkey string `json:"hotkey"`
-	MonitorClipboard bool `json:"monitor_clipboard"`
-	FirstRun bool `json:"first_run"`
-	CustomPrompts map[string]map[string]string `json:"custom_prompts,omitempty"`
-	AutoPasteMode string `json:"auto_paste_mode"`
-	PopupPositionMode string `json:"popup_position_mode"`
-	MiniMode bool `json:"mini_mode"`
-	AutoMinimizeOnCopy bool `json:"auto_minimize_on_copy"`
+	ServerURL          string                       `json:"server_url"`
+	Model              string                       `json:"model"`
+	APIKey             string                       `json:"api_key,omitempty"`
+	DefaultStyle       string                       `json:"default_style"`
+	AutoStart          bool                         `json:"auto_start"`
+	Hotkey             string                       `json:"hotkey"`
+	MonitorClipboard   bool                         `json:"monitor_clipboard"`
+	FirstRun           bool                         `json:"first_run"`
+	CustomPrompts      map[string]map[string]string `json:"custom_prompts,omitempty"`
+	AutoPasteMode      string                       `json:"auto_paste_mode"`
+	PopupPositionMode  string                       `json:"popup_position_mode"`
+	MiniMode           bool                         `json:"mini_mode"`
+	AutoMinimizeOnCopy bool                         `json:"auto_minimize_on_copy"`
 	// Window state persistence
 	WindowWidth  int `json:"window_width,omitempty"`
 	WindowHeight int `json:"window_height,omitempty"`
 	WindowX      int `json:"window_x,omitempty"`
 	WindowY      int `json:"window_y,omitempty"`
 	// Auto-update settings
-	AutoUpdateEnabled bool `json:"autoUpdateEnabled"`
-	CurrentVersion string `json:"currentVersion"`
-	UpdateChannel string `json:"updateChannel"` // "stable" or "beta"
+	AutoUpdateEnabled bool   `json:"autoUpdateEnabled"`
+	CurrentVersion    string `json:"currentVersion"`
+	UpdateChannel     string `json:"updateChannel"` // "stable" or "beta"
 	// OpenAI-compatible provider settings
-	UseOpenAICompatible bool `json:"useOpenAICompatible"`
-	OpenAIBaseURL string `json:"openAIBaseURL"`
-	OpenAIModel string `json:"openAIModel"`
-	OpenAIAPIKey string `json:"openAIAPIKey,omitempty"`
+	UseOpenAICompatible bool   `json:"useOpenAICompatible"`
+	OpenAIBaseURL       string `json:"openAIBaseURL"`
+	OpenAIModel         string `json:"openAIModel"`
+	OpenAIAPIKey        string `json:"openAIAPIKey,omitempty"`
+	// Streaming settings
+	DisableStreaming bool `json:"disableStreaming"`
 }
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		ServerURL: "http://localhost:11434",
-		Model: "gemma3:1b",
-		DefaultStyle: "standard",
-		AutoStart: true,
-		Hotkey: "ctrl+shift+r",
-		MonitorClipboard: false,
-		FirstRun: true,
-		CustomPrompts: make(map[string]map[string]string),
-		AutoPasteMode: "ask",
-		PopupPositionMode: "cursor",
-		MiniMode: false,
+		ServerURL:          "http://localhost:11434",
+		Model:              "gemma3:1b",
+		DefaultStyle:       "standard",
+		AutoStart:          true,
+		Hotkey:             "ctrl+shift+r",
+		MonitorClipboard:   false,
+		FirstRun:           true,
+		CustomPrompts:      make(map[string]map[string]string),
+		AutoPasteMode:      "ask",
+		PopupPositionMode:  "cursor",
+		MiniMode:           false,
 		AutoMinimizeOnCopy: true,
 		// Auto-update defaults
 		AutoUpdateEnabled: true,
-		CurrentVersion: "", // Set at build time via -ldflags "-X main.Version=x.y.z"
-		UpdateChannel: "stable",
+		CurrentVersion:    "", // Set at build time via -ldflags "-X main.Version=x.y.z"
+		UpdateChannel:     "stable",
 		// OpenAI-compatible defaults
 		UseOpenAICompatible: false,
-		OpenAIBaseURL: "https://integrate.api.nvidia.com/v1",
-		OpenAIModel: "mistralai/mistral-7b-instruct",
-		OpenAIAPIKey: "",
+		OpenAIBaseURL:       "https://integrate.api.nvidia.com/v1",
+		OpenAIModel:         "mistralai/mistral-7b-instruct",
+		OpenAIAPIKey:        "",
+		// Streaming defaults
+		DisableStreaming: false,
 	}
 }
 

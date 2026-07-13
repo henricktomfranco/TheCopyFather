@@ -25,6 +25,7 @@ export namespace config {
 	    openAIBaseURL: string;
 	    openAIModel: string;
 	    openAIAPIKey?: string;
+	    disableStreaming: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -56,6 +57,7 @@ export namespace config {
 	        this.openAIBaseURL = source["openAIBaseURL"];
 	        this.openAIModel = source["openAIModel"];
 	        this.openAIAPIKey = source["openAIAPIKey"];
+	        this.disableStreaming = source["disableStreaming"];
 	    }
 	}
 
