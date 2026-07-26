@@ -52,12 +52,43 @@ func CheckForUpdates(currentVersion string) *UpdateInfo {
 	info.LatestVersion = latestVersion
 	info.DownloadURL = getDownloadURL(release.Assets)
 
-	// Compare versions (simple semantic comparison for vX.Y.Z)
-	if latestVersion != currentVersion {
+	// Compare versions using semver (latest > current)
+	if isNewerVersion(latestVersion, currentVersion) {
 		info.Available = true
 	}
 
 	return info
+}
+
+// isNewerVersion returns true if latest is strictly newer than current (e.g. 1.2.0 > 1.1.0)
+func isNewerVersion(latest, current string) bool {
+	if latest == "" || current == "" || current == "dev" {
+		return latest != "" && latest != current
+	}
+	latestParts := parseSemver(latest)
+	currentParts := parseSemver(current)
+
+	for i := 0; i < 3; i++ {
+		if latestParts[i] > currentParts[i] {
+			return true
+		}
+		if latestParts[i] < currentParts[i] {
+			return false
+		}
+	}
+	return false
+}
+
+func parseSemver(v string) [3]int {
+	v = strings.TrimPrefix(v, "v")
+	parts := strings.Split(v, ".")
+	var res [3]int
+	for i := 0; i < len(parts) && i < 3; i++ {
+		var val int
+		fmt.Sscanf(parts[i], "%d", &val)
+		res[i] = val
+	}
+	return res
 }
 
 // fetchLatestRelease fetches the latest release from GitHub

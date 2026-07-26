@@ -147,17 +147,13 @@ func (c *Client) GenerateRewrite(ctx context.Context, text, style, systemPrompt 
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return fmt.Errorf("failed to connect to Ollama: %w", err)
+			return formatOllamaError(0, "", c.model, c.baseURL, err)
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			errStr := string(body)
-			if resp.StatusCode == http.StatusMethodNotAllowed {
-				return fmt.Errorf("ollama API error (status 405): Method Not Allowed. Hint: Check if your server URL is correct and use https if required. (URL: %s)", req.URL.String())
-			}
-			return fmt.Errorf("ollama API error (status %d): %s", resp.StatusCode, errStr)
+			return formatOllamaError(resp.StatusCode, string(body), c.model, c.baseURL, nil)
 		}
 
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -467,4 +463,20 @@ func (c *Client) generateNonStreaming(ctx context.Context, text, style, systemPr
 		outputChan <- ClientStreamResponse{Response: result, Done: true}
 	}()
 	return outputChan, nil
+}
+
+func formatOllamaError(statusCode int, errStr, model, serverURL string, connErr error) error {
+	if connErr != nil {
+		return fmt.Errorf("cannot connect to Ollama at %s. Please make sure Ollama is installed and running", serverURL)
+	}
+	if statusCode == http.StatusNotFound {
+		return fmt.Errorf("model '%s' not found on Ollama server. Run 'ollama pull %s' in terminal", model, model)
+	}
+	if statusCode == http.StatusMethodNotAllowed {
+		return fmt.Errorf("ollama API error (405): Method Not Allowed at %s. Check your Server URL protocol", serverURL)
+	}
+	if statusCode == http.StatusUnauthorized {
+		return fmt.Errorf("unauthorized (401). Please check your API key in Settings")
+	}
+	return fmt.Errorf("ollama API error (status %d): %s", statusCode, errStr)
 }

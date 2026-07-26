@@ -399,3 +399,19 @@ func (c *OpenAICompatibleClient) generateNonStreaming(ctx context.Context, text,
 	}()
 	return outputChan, nil
 }
+
+func formatOpenAIError(statusCode int, errStr, model, baseURL string, connErr error) error {
+	if connErr != nil {
+		return fmt.Errorf("cannot connect to API at %s. Please check your internet connection or server URL", baseURL)
+	}
+	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
+		return fmt.Errorf("API key invalid or unauthorized (status %d). Please check your API key in Settings", statusCode)
+	}
+	if statusCode == http.StatusNotFound {
+		return fmt.Errorf("model '%s' not found or invalid endpoint at %s", model, baseURL)
+	}
+	if statusCode == http.StatusTooManyRequests {
+		return fmt.Errorf("rate limit exceeded (429). Please wait a moment before retrying")
+	}
+	return fmt.Errorf("API error (status %d): %s", statusCode, errStr)
+}

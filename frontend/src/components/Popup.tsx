@@ -247,6 +247,9 @@ export default function Popup({
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
         e.preventDefault()
         handleRewrite()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
       }
     }
     window.addEventListener('keydown', handleKeyDown)

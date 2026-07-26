@@ -1,4 +1,4 @@
-import { RefObject } from 'react'
+import React, { RefObject } from 'react'
 import { rewriter as rewriterModels } from '../../wailsjs/go/models'
 
 export interface StyleData {
@@ -51,12 +51,47 @@ export function StyleSelector({
   isUserOverride,
   handleTextTypeChange
 }: StyleSelectorProps) {
+  const stylesList = mainMode === 'rewrite' ? REWRITE_STYLES : ANALYSIS_STYLES
+  const currentStyleValue = mainMode === 'rewrite' ? rewriteStyle : analysisStyle
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!dropdownOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
+      e.preventDefault()
+      setDropdownOpen(true)
+      return
+    }
+
+    if (dropdownOpen) {
+      const currentIndex = stylesList.findIndex(s => s.value === currentStyleValue)
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        const nextIndex = (currentIndex + 1) % stylesList.length
+        const nextStyle = stylesList[nextIndex].value
+        if (mainMode === 'rewrite') handleRewriteStyleChange(nextStyle)
+        else handleAnalysisStyleChange(nextStyle)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        const prevIndex = (currentIndex - 1 + stylesList.length) % stylesList.length
+        const prevStyle = stylesList[prevIndex].value
+        if (mainMode === 'rewrite') handleRewriteStyleChange(prevStyle)
+        else handleAnalysisStyleChange(prevStyle)
+      } else if (e.key === 'Enter' || e.key === 'Escape') {
+        e.preventDefault()
+        setDropdownOpen(false)
+      }
+    }
+  }
+
   return (
     <div className="style-section" ref={dropdownRef}>
       <div className="style-dropdown">
         <button
           className={`style-trigger ${dropdownOpen ? 'open' : ''}`}
           onClick={() => setDropdownOpen(!dropdownOpen)}
+          onKeyDown={handleKeyDown}
+          aria-haspopup="listbox"
+          aria-expanded={dropdownOpen}
+          title="Select style (Use Arrow keys to cycle)"
         >
           <span className="style-icon">
             {mainMode === 'rewrite' ? currentRewriteStyleData.icon : currentAnalysisStyleData.icon}

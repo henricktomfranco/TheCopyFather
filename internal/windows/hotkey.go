@@ -6,9 +6,18 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
+
+var (
+	globalHotkeyIDCounter uint32 = 0x1234
+)
+
+func getNextHotkeyID() uintptr {
+	return uintptr(atomic.AddUint32(&globalHotkeyIDCounter, 1))
+}
 
 var (
 	getAsyncKeyState         = user32.NewProc("GetAsyncKeyState")
@@ -43,7 +52,6 @@ const (
 	MOD_SHIFT      = 0x0004
 	MOD_WIN        = 0x0008
 	WM_HOTKEY      = 0x0312
-	HOTKEY_ID      = 0x1234
 	PM_REMOVE      = 0x0001
 
 	// Input types
@@ -78,6 +86,7 @@ type KEYBDINPUT struct {
 
 // HotkeyManager handles global hotkey registration
 type HotkeyManager struct {
+	id           uintptr
 	hotkeys      map[string]func()
 	running      bool
 	stopChan     chan bool
@@ -93,6 +102,7 @@ type hotkeyRequest struct {
 // NewHotkeyManager creates a new hotkey manager
 func NewHotkeyManager() *HotkeyManager {
 	h := &HotkeyManager{
+		id:           getNextHotkeyID(),
 		hotkeys:      make(map[string]func()),
 		stopChan:     make(chan bool),
 		registerChan: make(chan hotkeyRequest),
@@ -157,7 +167,7 @@ func (h *HotkeyManager) listen() {
 
 		select {
 		case <-h.stopChan:
-			unregisterHotKey.Call(0, uintptr(HOTKEY_ID))
+			unregisterHotKey.Call(0, h.id)
 			return
 		case req := <-h.registerChan:
 			mods, vk, err := parseHotkey(req.combo)
@@ -169,12 +179,12 @@ func (h *HotkeyManager) listen() {
 			h.hotkeys[req.combo] = req.callback
 
 			// Unregister existing if any (ignore error)
-			unregisterHotKey.Call(0, uintptr(HOTKEY_ID))
+			unregisterHotKey.Call(0, h.id)
 
 			// Register with Windows on THIS thread
 			ret, _, err := registerHotKey.Call(
 				0,
-				uintptr(HOTKEY_ID),
+				h.id,
 				uintptr(mods),
 				uintptr(vk),
 			)
@@ -199,13 +209,13 @@ func (h *HotkeyManager) listen() {
 				// Log every message to console for deep debugging
 				if msg.Message == WM_HOTKEY {
 					fmt.Printf("[HOTKEY] EXPLICIT WM_HOTKEY DETECTED: wParam=%v, lParam=%v\n", msg.WParam, msg.LParam)
-					if msg.WParam == uintptr(HOTKEY_ID) {
-						fmt.Println("[HOTKEY] Match found for HOTKEY_ID. Triggering callbacks...")
+					if msg.WParam == h.id {
+						fmt.Println("[HOTKEY] Match found for hotkey ID. Triggering callbacks...")
 						for _, callback := range h.hotkeys {
 							go callback()
 						}
 					} else {
-						fmt.Printf("[HOTKEY] wParam %v does not match HOTKEY_ID %v\n", msg.WParam, HOTKEY_ID)
+						fmt.Printf("[HOTKEY] wParam %v does not match hotkey ID %v\n", msg.WParam, h.id)
 					}
 				}
 				translateMessage.Call(uintptr(unsafe.Pointer(&msg)))

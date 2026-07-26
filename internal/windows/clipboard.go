@@ -28,15 +28,27 @@ func NewClipboardManager() *ClipboardManager {
 	}
 }
 
+func openClipboardWithRetry() error {
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		ret, _, err := openClipboard.Call(0)
+		if ret != 0 {
+			return nil
+		}
+		lastErr = err
+		time.Sleep(15 * time.Millisecond)
+	}
+	return fmt.Errorf("failed to open clipboard after 5 attempts: %v", lastErr)
+}
+
 // GetText retrieves text from the clipboard
 func (c *ClipboardManager) GetText() (string, error) {
-	ret, _, err := openClipboard.Call(0)
-	if ret == 0 {
-		return "", fmt.Errorf("failed to open clipboard: %v", err)
+	if err := openClipboardWithRetry(); err != nil {
+		return "", err
 	}
 	defer closeClipboard.Call()
 
-	ret, _, _ = getClipboardData.Call(uintptr(CF_UNICODETEXT))
+	ret, _, _ := getClipboardData.Call(uintptr(CF_UNICODETEXT))
 	if ret == 0 {
 		return "", fmt.Errorf("no text in clipboard")
 	}
@@ -59,9 +71,8 @@ func (c *ClipboardManager) GetText() (string, error) {
 
 // SetText sets text in the clipboard
 func (c *ClipboardManager) SetText(text string) error {
-	ret, _, err := openClipboard.Call(0)
-	if ret == 0 {
-		return fmt.Errorf("failed to open clipboard: %v", err)
+	if err := openClipboardWithRetry(); err != nil {
+		return err
 	}
 	defer closeClipboard.Call()
 
@@ -75,7 +86,7 @@ func (c *ClipboardManager) SetText(text string) error {
 
 	// Allocate memory
 	size := uintptr(len(utf16) * 2)
-	ret, _, _ = globalAlloc.Call(uintptr(GMEM_MOVEABLE), size)
+	ret, _, _ := globalAlloc.Call(uintptr(GMEM_MOVEABLE), size)
 	if ret == 0 {
 		return fmt.Errorf("failed to allocate memory")
 	}
@@ -176,9 +187,6 @@ func (c *ClipboardManager) SimulateCopy() error {
 	// Store current clipboard
 	oldText, _ := c.GetText()
 
-	// Simulate Ctrl+C would go here using SendInput
-	// For now, we assume text is already copied
-
 	// Small delay to let the copy operation complete
 	time.Sleep(100 * time.Millisecond)
 
@@ -266,9 +274,8 @@ func (c *ClipboardManager) SetRichText(plainText, htmlText string) error {
 	if plainText == htmlText {
 		htmlText = markdownToHTML(plainText)
 	}
-	ret, _, err := openClipboard.Call(0)
-	if ret == 0 {
-		return fmt.Errorf("failed to open clipboard: %v", err)
+	if err := openClipboardWithRetry(); err != nil {
+		return err
 	}
 	defer closeClipboard.Call()
 
@@ -281,7 +288,7 @@ func (c *ClipboardManager) SetRichText(plainText, htmlText string) error {
 	}
 
 	size := uintptr(len(utf16) * 2)
-	ret, _, _ = globalAlloc.Call(uintptr(GMEM_MOVEABLE), size)
+	ret, _, _ := globalAlloc.Call(uintptr(GMEM_MOVEABLE), size)
 	if ret == 0 {
 		return fmt.Errorf("failed to allocate memory for text")
 	}
