@@ -75,8 +75,9 @@ export default function Popup({
   const [selectedTextType, setSelectedTextType] = useState<string>('')
   const [availableTextTypes, setAvailableTextTypes] = useState<rewriterModels.TextTypeInfo[]>([])
   const [textTypeDropdownOpen, setTextTypeDropdownOpen] = useState(false)
-  const [isDetecting, setIsDetecting] = useState(false)
+  const [isDetecting, setIsDetecting] = useState(!!originalText)
   const [isUserOverride, setIsUserOverride] = useState(false)
+  const hasInitialGeneratedRef = useRef(false)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const textTypeDropdownRef = useRef<HTMLDivElement>(null)
@@ -227,12 +228,13 @@ export default function Popup({
       return
     }
 
-    if (!isDetecting && detectedTextType) {
-      generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, true)
-    } else if (!isDetecting) {
-      generate(initialMode, isGrammarDefault ? 'grammar' : initialRewriteStyle, false)
+    if (!isDetecting && !hasInitialGeneratedRef.current) {
+      hasInitialGeneratedRef.current = true
+      const useTextType = !!detectedTextType || selectedTextType !== ''
+      const styleToUse = isGrammarDefault ? 'grammar' : initialRewriteStyle
+      generate(initialMode, styleToUse, useTextType)
     }
-  }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, isDetecting, detectedTextType, originalText, miniModeResult, rewriteStyle])
+  }, [generate, initialMode, isGrammarDefault, initialRewriteStyle, isDetecting, detectedTextType, selectedTextType, originalText, miniModeResult, rewriteStyle])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

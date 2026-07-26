@@ -11,6 +11,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// Scanner is an interface that matches *sql.Row and *sql.Rows
+type Scanner interface {
+	Scan(dest ...interface{}) error
+}
+
 // HistoryEntry represents a single rewrite history entry
 type HistoryEntry struct {
 	ID            int64     `json:"id"`

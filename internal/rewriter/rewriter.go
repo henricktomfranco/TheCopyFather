@@ -116,6 +116,9 @@ func New(client ollama.AIClient, cfg *config.Config) *Rewriter {
 
 // ComputeDiff computes the diff between original and rewritten text
 func (r *Rewriter) ComputeDiff(original, rewritten string) DiffResult {
+	if r.dmp == nil {
+		r.dmp = diffmatchpatch.New()
+	}
 	diffs := r.dmp.DiffMain(original, rewritten, true)
 	r.dmp.DiffCleanupSemantic(diffs)
 
@@ -444,6 +447,8 @@ func (r *Rewriter) GenerateAnalysisWithTextType(ctx context.Context, text, style
 	}, nil
 }
 
+var tripleNewlineRegex = regexp.MustCompile(`\n{3,}`)
+
 // cleanResponse sanitizes the AI response by removing thinking tags,
 // markdown code blocks, conversational fillers, and extra whitespace.
 func cleanResponse(text string) string {
@@ -609,7 +614,7 @@ func cleanResponse(text string) string {
 	// 6. Normalize whitespace
 	// Preserve paragraph breaks (double newlines) while normalizing spaces within lines
 	// First, normalize multiple consecutive newlines to exactly double newlines
-	text = regexp.MustCompile(`\n{3,}`).ReplaceAllString(text, "\n\n")
+	text = tripleNewlineRegex.ReplaceAllString(text, "\n\n")
 	// Then, for each line, normalize spaces/tabs to single space and trim
 	lines := strings.Split(text, "\n")
 	for i := range lines {
