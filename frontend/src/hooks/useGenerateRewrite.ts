@@ -12,6 +12,17 @@ interface UseGenerateRewriteProps {
   analysisStyle: string
 }
 
+const globalStyleCache = new Map<string, string>()
+const MAX_GLOBAL_CACHE_ENTRIES = 100
+
+function setGlobalCache(key: string, value: string) {
+  if (globalStyleCache.size >= MAX_GLOBAL_CACHE_ENTRIES) {
+    const firstKey = globalStyleCache.keys().next().value
+    if (firstKey) globalStyleCache.delete(firstKey)
+  }
+  globalStyleCache.set(key, value)
+}
+
 export function useGenerateRewrite({
   originalText,
   selectedTextType,
@@ -29,7 +40,6 @@ export function useGenerateRewrite({
   const [variationIndex, setVariationIndex] = useState<number>(-1)
   
   const MAX_VARIATIONS = 20
-  const styleCacheRef = useRef<Map<string, string>>(new Map())
   const activeRequestIDRef = useRef<string | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -56,14 +66,13 @@ export function useGenerateRewrite({
 
     const currentFormatting = enableFormattingRef.current
     const currentTextType = selectedTextType
-    const cache = styleCacheRef.current
-    const cacheKey = `${targetMainMode}-${targetStyle}-${useTextType ? currentTextType : 'auto'}-${currentFormatting}`
+    const cacheKey = `${originalText.trim()}:${targetMainMode}:${targetStyle}:${useTextType ? currentTextType : 'auto'}:${currentFormatting}`
 
     console.log('Generate called:', { targetMainMode, targetStyle, useTextType, selectedTextType: currentTextType, cacheKey, isUserOverride })
 
-    if (cache.has(cacheKey)) {
+    if (globalStyleCache.has(cacheKey)) {
       console.log('Using cached result for key:', cacheKey)
-      setResult(cache.get(cacheKey)!)
+      setResult(globalStyleCache.get(cacheKey)!)
       setError(null)
       return
     }
@@ -140,7 +149,7 @@ export function useGenerateRewrite({
       })
 
       if (generatedText) {
-        cache.set(cacheKey, generatedText)
+        setGlobalCache(cacheKey, generatedText)
         const historyEntry = { text: generatedText, style: targetStyle, timestamp: Date.now() }
         setResultHistory(prev => {
           const newHistory = [...prev, historyEntry]

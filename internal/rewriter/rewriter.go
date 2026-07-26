@@ -887,6 +887,7 @@ func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-ch
 	go func() {
 		defer close(outputChan)
 		var fullText strings.Builder
+		var lastCleaned string
 		for resp := range streamChan {
 			if resp.Error != nil {
 				outputChan <- StreamChunk{Error: resp.Error.Error()}
@@ -894,7 +895,8 @@ func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-ch
 			}
 			fullText.WriteString(resp.Response)
 			cleaned := cleanResponse(fullText.String())
-			if cleaned != "" {
+			if cleaned != "" && cleaned != lastCleaned {
+				lastCleaned = cleaned
 				outputChan <- StreamChunk{Text: cleaned}
 			}
 			if resp.Done {
@@ -933,6 +935,7 @@ func (r *Rewriter) GenerateStreamWithFormatting(ctx context.Context, text, style
 	go func() {
 		defer close(outputChan)
 		var fullText strings.Builder
+		var lastCleaned string
 		for resp := range streamChan {
 			if resp.Error != nil {
 				outputChan <- StreamChunk{Error: resp.Error.Error()}
@@ -943,7 +946,10 @@ func (r *Rewriter) GenerateStreamWithFormatting(ctx context.Context, text, style
 			if !enableFormatting {
 				cleaned = stripMarkdownFormatting(cleaned)
 			}
-			outputChan <- StreamChunk{Text: cleaned}
+			if cleaned != lastCleaned {
+				lastCleaned = cleaned
+				outputChan <- StreamChunk{Text: cleaned}
+			}
 			if resp.Done {
 				outputChan <- StreamChunk{Done: true}
 				return
@@ -970,6 +976,7 @@ func (r *Rewriter) GenerateStreamWithTextType(ctx context.Context, text, style s
 	go func() {
 		defer close(outputChan)
 		var fullText strings.Builder
+		var lastCleaned string
 		for resp := range streamChan {
 			if resp.Error != nil {
 				outputChan <- StreamChunk{Error: resp.Error.Error()}
@@ -980,7 +987,10 @@ func (r *Rewriter) GenerateStreamWithTextType(ctx context.Context, text, style s
 			if !enableFormatting {
 				cleaned = stripMarkdownFormatting(cleaned)
 			}
-			outputChan <- StreamChunk{Text: cleaned}
+			if cleaned != lastCleaned {
+				lastCleaned = cleaned
+				outputChan <- StreamChunk{Text: cleaned}
+			}
 			if resp.Done {
 				outputChan <- StreamChunk{Done: true}
 				return
@@ -1007,6 +1017,7 @@ func (r *Rewriter) GenerateStreamAnalysis(ctx context.Context, text, style strin
 	go func() {
 		defer close(outputChan)
 		var fullText strings.Builder
+		var lastCleaned string
 		for resp := range streamChan {
 			if resp.Error != nil {
 				outputChan <- StreamChunk{Error: resp.Error.Error()}
@@ -1014,7 +1025,8 @@ func (r *Rewriter) GenerateStreamAnalysis(ctx context.Context, text, style strin
 			}
 			fullText.WriteString(resp.Response)
 			cleaned := cleanResponse(fullText.String())
-			if cleaned != "" {
+			if cleaned != "" && cleaned != lastCleaned {
+				lastCleaned = cleaned
 				outputChan <- StreamChunk{Text: cleaned}
 			}
 			if resp.Done {
@@ -1043,6 +1055,7 @@ func (r *Rewriter) GenerateStreamAnalysisWithTextType(ctx context.Context, text,
 	go func() {
 		defer close(outputChan)
 		var fullText strings.Builder
+		var lastCleaned string
 		for resp := range streamChan {
 			if resp.Error != nil {
 				outputChan <- StreamChunk{Error: resp.Error.Error()}
@@ -1053,7 +1066,10 @@ func (r *Rewriter) GenerateStreamAnalysisWithTextType(ctx context.Context, text,
 			if !enableFormatting {
 				cleaned = stripMarkdownFormatting(cleaned)
 			}
-			outputChan <- StreamChunk{Text: cleaned}
+			if cleaned != lastCleaned {
+				lastCleaned = cleaned
+				outputChan <- StreamChunk{Text: cleaned}
+			}
 			if resp.Done {
 				outputChan <- StreamChunk{Done: true}
 				return
