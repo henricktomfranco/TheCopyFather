@@ -7,9 +7,10 @@ interface UseGenerateRewriteProps {
   selectedTextType: string
   isUserOverride: boolean
   enableFormattingRef: MutableRefObject<boolean>
-  mainMode: 'rewrite' | 'analyze'
+  mainMode: 'rewrite' | 'sliders' | 'analyze'
   rewriteStyle: string
   analysisStyle: string
+  sliderParams?: { formality: number; length: number }
 }
 
 const globalStyleCache = new Map<string, string>()
@@ -30,7 +31,8 @@ export function useGenerateRewrite({
   enableFormattingRef,
   mainMode,
   rewriteStyle,
-  analysisStyle
+  analysisStyle,
+  sliderParams
 }: UseGenerateRewriteProps) {
   const [result, setResult] = useState<string>('')
   const [loading, setLoading] = useState(false)
@@ -61,14 +63,20 @@ export function useGenerateRewrite({
     }
   }, [])
 
-  const generate = useCallback(async (targetMainMode: string, targetStyle: string, useTextType: boolean = false) => {
+  const generate = useCallback(async (
+    targetMainMode: string, 
+    targetStyle: string, 
+    useTextType: boolean = false,
+    sliderParams?: { formality: number; length: number }
+  ) => {
     if (!originalText) return
 
     const currentFormatting = enableFormattingRef.current
     const currentTextType = selectedTextType
-    const cacheKey = `${originalText.trim()}:${targetMainMode}:${targetStyle}:${useTextType ? currentTextType : 'auto'}:${currentFormatting}`
+    const sliderKey = sliderParams ? `:${sliderParams.formality}:${sliderParams.length}` : ''
+    const cacheKey = `${originalText.trim()}:${targetMainMode}:${targetStyle}:${useTextType ? currentTextType : 'auto'}:${currentFormatting}${sliderKey}`
 
-    console.log('Generate called:', { targetMainMode, targetStyle, useTextType, selectedTextType: currentTextType, cacheKey, isUserOverride })
+    console.log('Generate called:', { targetMainMode, targetStyle, useTextType, selectedTextType: currentTextType, cacheKey, isUserOverride, sliderParams })
 
     if (globalStyleCache.has(cacheKey)) {
       console.log('Using cached result for key:', cacheKey)
@@ -133,7 +141,9 @@ export function useGenerateRewrite({
           reject(new Error(errMsg))
         })
 
-        if (targetMainMode === 'analyze') {
+        if (targetMainMode === 'sliders' && sliderParams) {
+          RewriteAPI.StreamRewriteWithSliders(requestID, originalText, sliderParams.formality, sliderParams.length, textTypeToUse, currentFormatting)
+        } else if (targetMainMode === 'analyze') {
           if (useTypeSpecific) {
             RewriteAPI.StreamAnalysisWithTextType(requestID, originalText, targetStyle, textTypeToUse, currentFormatting)
           } else {
@@ -150,7 +160,10 @@ export function useGenerateRewrite({
 
       if (generatedText) {
         setGlobalCache(cacheKey, generatedText)
-        const historyEntry = { text: generatedText, style: targetStyle, timestamp: Date.now() }
+        const styleLabel = targetMainMode === 'sliders' && sliderParams 
+          ? `Tone (${sliderParams.formality}% / ${sliderParams.length}%)` 
+          : targetStyle
+        const historyEntry = { text: generatedText, style: styleLabel, timestamp: Date.now() }
         setResultHistory(prev => {
           const newHistory = [...prev, historyEntry]
           if (newHistory.length > MAX_VARIATIONS) {
@@ -173,13 +186,18 @@ export function useGenerateRewrite({
     setLoading(false)
   }, [originalText, selectedTextType, isUserOverride])
 
-  const debouncedGenerate = useCallback((mode: string, style: string, useTextType: boolean) => {
+  const debouncedGenerate = useCallback((
+    mode: string, 
+    style: string, 
+    useTextType: boolean,
+    sliderParams?: { formality: number; length: number }
+  ) => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
     }
     debounceRef.current = setTimeout(() => {
-      generate(mode, style, useTextType)
-    }, 200)
+      generate(mode, style, useTextType, sliderParams)
+    }, 250)
   }, [generate])
 
   const handlePrevVariation = useCallback(() => {
@@ -203,9 +221,13 @@ export function useGenerateRewrite({
   }, [selectedTextType])
 
   const handleRewrite = useCallback(() => {
-    const currentStyle = mainMode === 'analyze' ? analysisStyle : rewriteStyle
-    generate(mainMode, currentStyle, shouldUseTextType())
-  }, [mainMode, analysisStyle, rewriteStyle, generate, shouldUseTextType])
+    if (mainMode === 'sliders' && sliderParams) {
+      generate('sliders', 'sliders', shouldUseTextType(), sliderParams)
+    } else {
+      const currentStyle = mainMode === 'analyze' ? analysisStyle : rewriteStyle
+      generate(mainMode, currentStyle, shouldUseTextType())
+    }
+  }, [mainMode, analysisStyle, rewriteStyle, sliderParams, generate, shouldUseTextType])
 
   return {
     result,

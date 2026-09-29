@@ -66,6 +66,10 @@ export function RetryRewriteWithFormatting(arg1, arg2, arg3) {
   return window['go']['main']['RewriteService']['RetryRewriteWithFormatting'](arg1, arg2, arg3);
 }
 
+export function RetryRewriteWithSliders(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['RewriteService']['RetryRewriteWithSliders'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function RetryRewriteWithTextType(arg1, arg2, arg3, arg4) {
   return window['go']['main']['RewriteService']['RetryRewriteWithTextType'](arg1, arg2, arg3, arg4);
 }
@@ -80,6 +84,10 @@ export function StreamAnalysisWithTextType(arg1, arg2, arg3, arg4, arg5) {
 
 export function StreamRewriteWithFormatting(arg1, arg2, arg3, arg4) {
   return window['go']['main']['RewriteService']['StreamRewriteWithFormatting'](arg1, arg2, arg3, arg4);
+}
+
+export function StreamRewriteWithSliders(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['RewriteService']['StreamRewriteWithSliders'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function StreamRewriteWithTextType(arg1, arg2, arg3, arg4, arg5) {

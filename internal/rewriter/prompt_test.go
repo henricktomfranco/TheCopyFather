@@ -20,8 +20,8 @@ func TestGetPromptForTextType(t *testing.T) {
 	}{
 		{"formal", TextTypeEmail, "You are a business communication expert"},
 		{"casual", TextTypeChat, "You are a friend"},
-		{"grammar", TextTypeCode, "You are a tech editor"},
-		{"bullets", TextTypeNormal, "Extract 3-5 main ideas"},
+		{"grammar", TextTypeCode, "You are a technical editor"},
+		{"bullets", TextTypeNormal, "Extract 3-7 key ideas"},
 	}
 
 	for _, tc := range testCases {

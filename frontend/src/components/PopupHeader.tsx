@@ -3,8 +3,8 @@ import appIcon from '../assets/appicon.png'
 interface PopupHeaderProps {
   onSettings: () => void
   onClose: () => void
-  mainMode: 'rewrite' | 'analyze'
-  handleMainModeChange: (mode: 'rewrite' | 'analyze') => void
+  mainMode: 'rewrite' | 'sliders' | 'analyze'
+  handleMainModeChange: (mode: 'rewrite' | 'sliders' | 'analyze') => void
 }
 
 export function PopupHeader({ onSettings, onClose, mainMode, handleMainModeChange }: PopupHeaderProps) {
@@ -33,7 +33,14 @@ export function PopupHeader({ onSettings, onClose, mainMode, handleMainModeChang
           onClick={() => handleMainModeChange('rewrite')}
         >
           <span className="mode-icon">🔄</span>
-          <span className="mode-label">Rewrite</span>
+          <span className="mode-label">Presets</span>
+        </button>
+        <button
+          className={`mode-btn ${mainMode === 'sliders' ? 'active' : ''}`}
+          onClick={() => handleMainModeChange('sliders')}
+        >
+          <span className="mode-icon">🎛️</span>
+          <span className="mode-label">Tone Dial</span>
         </button>
         <button
           className={`mode-btn ${mainMode === 'analyze' ? 'active' : ''}`}

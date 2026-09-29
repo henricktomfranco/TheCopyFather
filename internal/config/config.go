@@ -36,6 +36,17 @@ type Config struct {
 	AutoUpdateEnabled bool   `json:"autoUpdateEnabled"`
 	CurrentVersion    string `json:"currentVersion"`
 	UpdateChannel     string `json:"updateChannel"` // "stable" or "beta"
+	// Provider mode: "embedded" (default), "ollama", "openai"
+	ProviderMode string `json:"provider_mode"`
+	// Embedded llama.cpp settings
+	EmbeddedModel       string `json:"embedded_model"`
+	EmbeddedModelPath   string `json:"embedded_model_path"`
+	EmbeddedBinaryPath  string `json:"embedded_binary_path"`
+	EmbeddedHardware    string `json:"embedded_hardware"`     // "cpu"
+	EmbeddedCPUThreads  int    `json:"embedded_cpu_threads"`  // 0 = auto-detect
+	EmbeddedMaxThreads  int    `json:"embedded_max_threads"`  // limit (default 6)
+	EmbeddedContextSize int    `json:"embedded_context_size"` // 2048 - 4096 (default 4096)
+	DisableThinking     bool   `json:"disable_thinking"`      // true (Thinking: OFF)
 	// OpenAI-compatible provider settings
 	UseOpenAICompatible bool   `json:"useOpenAICompatible"`
 	OpenAIBaseURL       string `json:"openAIBaseURL"`
@@ -48,18 +59,18 @@ type Config struct {
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		ServerURL:          "http://localhost:11434",
-		Model:              "gemma3:1b",
-		DefaultStyle:       "standard",
-		AutoStart:          true,
-		Hotkey:             "ctrl+shift+r",
-		MonitorClipboard:   false,
-		FirstRun:           true,
-		CustomPrompts:      make(map[string]map[string]string),
-		AutoPasteMode:      "ask",
-		PopupPositionMode:  "cursor",
-		MiniMode:           false,
-		AutoMinimizeOnCopy: true,
+		ServerURL:           "http://localhost:11434",
+		Model:               "SmolLM2-360M",
+		DefaultStyle:        "standard",
+		AutoStart:           true,
+		Hotkey:              "ctrl+shift+r",
+		MonitorClipboard:    false,
+		FirstRun:            true,
+		CustomPrompts:       make(map[string]map[string]string),
+		AutoPasteMode:       "ask",
+		PopupPositionMode:   "cursor",
+		MiniMode:            false,
+		AutoMinimizeOnCopy:  true,
 		// Ghost Typing Mode defaults
 		GhostHotkey:   "ctrl+shift+g",
 		GhostStyle:    "standard",
@@ -68,12 +79,22 @@ func DefaultConfig() *Config {
 		AutoUpdateEnabled: true,
 		CurrentVersion:    "", // Set at build time via -ldflags "-X main.Version=x.y.z"
 		UpdateChannel:     "stable",
+		// Provider mode default: embedded llama.cpp
+		ProviderMode:        "embedded",
+		EmbeddedModel:       "SmolLM2-360M",
+		EmbeddedModelPath:   filepath.Join(GetAppDataDir(), "models", "smollm2-360m-instruct-q4_k_m.gguf"),
+		EmbeddedBinaryPath:  filepath.Join(GetAppDataDir(), "engine", "llama-server.exe"),
+		EmbeddedHardware:    "cpu",
+		EmbeddedCPUThreads:  0,    // 0 = auto-detect
+		EmbeddedMaxThreads:  6,    // auto-detect with configurable limit
+		EmbeddedContextSize: 4096, // 2K-4K context
+		DisableThinking:     true, // Thinking: OFF
 		// OpenAI-compatible defaults
 		UseOpenAICompatible: false,
 		OpenAIBaseURL:       "https://integrate.api.nvidia.com/v1",
 		OpenAIModel:         "mistralai/mistral-7b-instruct",
 		OpenAIAPIKey:        "",
-		// Streaming defaults
+		// Streaming defaults: Streaming ON
 		DisableStreaming: false,
 	}
 }
@@ -1073,8 +1094,8 @@ OUTPUT: Return ONLY the analysis. Nothing before or after.`,
 	}
 }
 
-// getConfigPath returns the path to the config file
-func getConfigPath() string {
+// GetAppDataDir returns the standard %APPDATA%\TheCopyfather directory
+func GetAppDataDir() string {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
 		appData = os.Getenv("USERPROFILE")
@@ -1084,7 +1105,12 @@ func getConfigPath() string {
 	}
 	configDir := filepath.Join(appData, "TheCopyfather")
 	os.MkdirAll(configDir, 0755)
-	return filepath.Join(configDir, "config.json")
+	return configDir
+}
+
+// getConfigPath returns the path to the config file
+func getConfigPath() string {
+	return filepath.Join(GetAppDataDir(), "config.json")
 }
 
 // Load loads the configuration from disk
@@ -1115,6 +1141,39 @@ func Load() *Config {
 		} else {
 			config.APIKey = decryptedKey
 		}
+	}
+
+	// Ensure embedded engine settings have sane defaults if loading older config
+	if config.ProviderMode == "" {
+		if config.UseOpenAICompatible {
+			config.ProviderMode = "openai"
+		} else {
+			config.ProviderMode = "embedded"
+		}
+	}
+	if config.ProviderMode == "openai" {
+		config.UseOpenAICompatible = true
+	} else if config.ProviderMode == "embedded" {
+		config.UseOpenAICompatible = false
+	}
+	if config.EmbeddedModel == "" {
+		config.EmbeddedModel = "Qwen3-1.7B"
+	}
+	appDataDir := GetAppDataDir()
+	if config.EmbeddedModelPath == "" {
+		config.EmbeddedModelPath = filepath.Join(appDataDir, "models", "qwen3-1.7b-q4_k_m.gguf")
+	}
+	if config.EmbeddedBinaryPath == "" {
+		config.EmbeddedBinaryPath = filepath.Join(appDataDir, "engine", "llama-server.exe")
+	}
+	if config.EmbeddedHardware == "" {
+		config.EmbeddedHardware = "cpu"
+	}
+	if config.EmbeddedContextSize == 0 {
+		config.EmbeddedContextSize = 4096
+	}
+	if config.EmbeddedMaxThreads == 0 {
+		config.EmbeddedMaxThreads = 6
 	}
 
 	return config
@@ -1175,9 +1234,61 @@ func (c *Config) GetPrompt(style, textType string) string {
 	return prompt + antiSlopRules
 }
 
-// antiSlopRules removes AI writing tells from generated output.
-// Based on hardikpandya/stop-slop.
+// GetSliderPrompt dynamically constructs a tailored rewriting prompt based on formality (0-100) and length (0-100)
+func (c *Config) GetSliderPrompt(formality, length int, textType string) string {
+	var formalityInstruction string
+	switch {
+	case formality <= 20:
+		formalityInstruction = "TONE: Highly casual, warm, conversational, and relaxed. Use friendly contractions and everyday speech."
+	case formality <= 40:
+		formalityInstruction = "TONE: Casual and conversational, yet clear and polite. Friendly peer-to-peer tone."
+	case formality <= 60:
+		formalityInstruction = "TONE: Balanced, neutral, clear, and direct. Professional yet approachable."
+	case formality <= 80:
+		formalityInstruction = "TONE: Professional, articulate, polished, and structured. Appropriate for business communication."
+	default:
+		formalityInstruction = "TONE: Highly formal, executive, diplomatic, and sophisticated. Use precise vocabulary and avoid casual contractions."
+	}
+
+	var lengthInstruction string
+	switch {
+	case length <= 20:
+		lengthInstruction = "LENGTH: Ultra-concise. Strip away all unnecessary words. Make it significantly shorter (~50-60% shorter). Deliver only the core essence."
+	case length <= 40:
+		lengthInstruction = "LENGTH: Concise and punchy. Trim filler and tighten sentences (~25-35% shorter)."
+	case length <= 60:
+		lengthInstruction = "LENGTH: Maintain roughly the same length as the original text."
+	case length <= 80:
+		lengthInstruction = "LENGTH: Elaborate moderately. Add helpful clarity, nuance, or detail (~25-35% longer)."
+	default:
+		lengthInstruction = "LENGTH: Comprehensive and detailed. Fully expand with rich depth, explanations, and thorough elaboration (~50-80% longer)."
+	}
+
+	typeContext := ""
+	if textType != "" && textType != "normal" && textType != "unknown" {
+		typeContext = fmt.Sprintf("\nFORMAT / CONTEXT: The text is a %s. Format and structure appropriately for this type.", textType)
+	}
+
+	prompt := fmt.Sprintf(`You are an expert editor and rewriter.
+
+TASK: Rewrite the provided text following these exact parameters:
+1. %s
+2. %s%s
+3. Preserve the core facts, meaning, and intent of the original text.
+4. Output ONLY the rewritten text. Do not provide any introduction, explanation, commentary, or conversational filler.`, formalityInstruction, lengthInstruction, typeContext)
+
+	return prompt + antiSlopRules
+}
+
+// antiSlopRules removes AI writing tells from generated output and enforces anti-hallucination guardrails.
+// Based on hardikpandya/stop-slop with anti-hallucination and anti-loop constraints.
 const antiSlopRules = `
+
+ANTI-HALLUCINATION & INTEGRITY GUARDRAILS (CRITICAL):
+- ZERO FABRICATION: Do NOT invent, assume, fabricate, or extrapolate any names, dates, numbers, URLs, emails, locations, statistics, or background details not explicitly in the input text.
+- FAITHFUL REWRITE: Preserve 100% of the original meaning and factual substance. Do not add outside claims or imaginary context.
+- SCOPE CONSTRAINT: You are a text rewriter, NOT a conversational partner. Do NOT answer questions inside the input text, do NOT write a reply to the text, and do NOT continue the story. Rewrite ONLY what was given.
+- NO REPETITION / NO DEGENERATION: Output each word and concept once. Never get stuck in repeating words, phrases, or loops. Stop immediately once the rewrite is complete.
 
 ANTI-SLOP RULES (apply to your entire output):
 - No adverbs (-ly words). Kill "really", "just", "actually", "simply".

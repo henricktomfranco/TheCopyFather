@@ -2,7 +2,7 @@ package config
 
 import (
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,8 +25,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.ServerURL != "http://localhost:11434" {
 		t.Errorf("DefaultConfig: Expected ServerURL to be 'http://localhost:11434', got '%s'", cfg.ServerURL)
 	}
-	if cfg.Model != "gemma3:1b" {
-		t.Errorf("DefaultConfig: Expected Model to be 'gemma3:1b', got '%s'", cfg.Model)
+	if cfg.Model != "SmolLM2-360M" {
+		t.Errorf("DefaultConfig: Expected Model to be 'SmolLM2-360M', got '%s'", cfg.Model)
 	}
 	if cfg.AutoStart != true {
 		t.Error("DefaultConfig: Expected AutoStart to be true")
@@ -197,8 +197,8 @@ func TestGetPrompt(t *testing.T) {
 		},
 	}
 	prompt = cfg.GetPrompt("email", "grammar")
-	if prompt != "Custom grammar prompt" {
-		t.Errorf("Expected custom prompt, got '%s'", prompt)
+	if !strings.HasPrefix(prompt, "Custom grammar prompt") {
+		t.Errorf("Expected custom prompt prefix, got '%s'", prompt)
 	}
 
 	// Test fallback to default when custom prompt doesn't exist
@@ -292,5 +292,27 @@ func TestGetAllCustomPrompts(t *testing.T) {
 	}
 	if prompts["chat"]["casual"] != "Casual prompt" {
 		t.Error("Expected chat/casual prompt to match")
+	}
+}
+
+func TestGetSliderPrompt(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// Casual + Short
+	p1 := cfg.GetSliderPrompt(10, 10, "chat")
+	if !strings.Contains(p1, "Highly casual") || !strings.Contains(p1, "Ultra-concise") {
+		t.Errorf("Expected casual and short prompt, got: %s", p1)
+	}
+
+	// Formal + Expanded
+	p2 := cfg.GetSliderPrompt(90, 90, "email")
+	if !strings.Contains(p2, "Highly formal") || !strings.Contains(p2, "Comprehensive and detailed") {
+		t.Errorf("Expected formal and expanded prompt, got: %s", p2)
+	}
+
+	// Balanced
+	p3 := cfg.GetSliderPrompt(50, 50, "normal")
+	if !strings.Contains(p3, "Balanced") || !strings.Contains(p3, "Maintain roughly the same length") {
+		t.Errorf("Expected balanced prompt, got: %s", p3)
 	}
 }

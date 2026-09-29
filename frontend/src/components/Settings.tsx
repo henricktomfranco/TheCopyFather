@@ -20,6 +20,35 @@ interface SettingsProps {
 // Tab types
 type TabType = 'general' | 'ai' | 'updates' | 'advanced';
 
+// OpenAI endpoint presets for quick 1-click configuration
+const OPENAI_PRESETS = [
+  {
+    name: 'NVIDIA NIM',
+    baseURL: 'https://integrate.api.nvidia.com/v1',
+    model: 'mistralai/mistral-7b-instruct',
+  },
+  {
+    name: 'Groq',
+    baseURL: 'https://api.groq.com/openai/v1',
+    model: 'llama-3.3-70b-versatile',
+  },
+  {
+    name: 'OpenAI',
+    baseURL: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+  },
+  {
+    name: 'LM Studio (Local)',
+    baseURL: 'http://localhost:1234/v1',
+    model: 'local-model',
+  },
+  {
+    name: 'Ollama API',
+    baseURL: 'http://localhost:11434/v1',
+    model: 'llama3.2',
+  },
+];
+
 const SettingsNew: React.FC<SettingsProps> = ({
   settings,
   onSave,
@@ -36,7 +65,6 @@ const SettingsNew: React.FC<SettingsProps> = ({
   // State for form data
   const [formData, setFormData] = useState<Config>(settings);
   const [activeTab, setActiveTab] = useState<TabType>('general');
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [rewriteStyles, setRewriteStyles] = useState<string[]>([]);
   const [analysisStyles, setAnalysisStyles] = useState<string[]>([]);
   const [textTypes, setTextTypes] = useState<TextTypeInfo[]>([]);
@@ -54,14 +82,12 @@ const SettingsNew: React.FC<SettingsProps> = ({
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [models, styles, analysis, types, prompts] = await Promise.all([
-          SettingsAPI.GetAvailableModels().catch(() => []),
+        const [styles, analysis, types, prompts] = await Promise.all([
           onLoadRewriteStyles(),
           onLoadAnalysisStyles(),
           onLoadTextTypes(),
           onLoadCustomPrompts(),
         ]);
-        setAvailableModels(models || []);
         setRewriteStyles(styles || []);
         setAnalysisStyles(analysis || []);
         setTextTypes(types || []);
@@ -80,9 +106,29 @@ const SettingsNew: React.FC<SettingsProps> = ({
     setFormData(settings);
   }, [settings]);
 
-  // Handle form field changes
+  // Handle form field changes with functional updates to avoid race conditions/stale closures
   const handleChange = <K extends keyof Config>(key: K, value: Config[K]) => {
-    setFormData({ ...formData, [key]: value });
+    setFormData(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Switch between embedded and OpenAI execution modes
+  const handleSelectMode = (mode: 'embedded' | 'openai') => {
+    setFormData(prev => {
+      if (mode === 'openai') {
+        return {
+          ...prev,
+          provider_mode: 'openai',
+          useOpenAICompatible: true,
+          openAIBaseURL: prev.openAIBaseURL || 'https://integrate.api.nvidia.com/v1',
+          openAIModel: prev.openAIModel || 'mistralai/mistral-7b-instruct',
+        };
+      }
+      return {
+        ...prev,
+        provider_mode: 'embedded',
+        useOpenAICompatible: false,
+      };
+    });
   };
 
   // Handle saving settings
@@ -98,15 +144,25 @@ const SettingsNew: React.FC<SettingsProps> = ({
     setDetectedVersion('');
 
     try {
-const version = await SettingsAPI.TestConnection(
-formData.useOpenAICompatible ? (formData.openAIBaseURL ?? '') : (formData.server_url ?? ''),
-formData.useOpenAICompatible ? (formData.openAIModel ?? '') : (formData.model ?? ''),
-formData.useOpenAICompatible ? (formData.openAIAPIKey ?? '') : (formData.api_key ?? ''),
-formData.useOpenAICompatible ?? false
-);
+      const mode = (formData.provider_mode === 'openai' || formData.useOpenAICompatible) ? 'openai' : 'embedded';
+      let version = '';
+      if (mode === 'openai') {
+        const baseURL = formData.openAIBaseURL || 'https://integrate.api.nvidia.com/v1';
+        const model = formData.openAIModel || 'mistralai/mistral-7b-instruct';
+        const apiKey = formData.openAIAPIKey || '';
+        version = await SettingsAPI.TestConnection(
+          baseURL,
+          model,
+          apiKey,
+          true
+        );
+      } else {
+        version = await SettingsAPI.TestConnection('', '', '', false);
+      }
       setDetectedVersion(version);
       setConnectionStatus('success');
-    } catch (error) {
+    } catch (error: any) {
+      setDetectedVersion(error?.message || String(error));
       setConnectionStatus('error');
     }
 
@@ -177,10 +233,13 @@ formData.useOpenAICompatible ?? false
   const renderConnectionStatus = () => {
     if (connectionStatus === 'idle') return null;
     return (
-      <div className={`status-badge ${connectionStatus}`}>
+      <div 
+        className={`status-badge ${connectionStatus}`}
+        title={detectedVersion}
+      >
         {connectionStatus === 'success'
-          ? `✓ Connected (v${detectedVersion || 'Unknown'})`
-          : '✗ Connection failed'}
+          ? `✓ Connected (${detectedVersion || 'OK'})`
+          : `✗ Connection failed: ${detectedVersion || 'Unknown error'}`}
       </div>
     );
   };
@@ -341,141 +400,308 @@ formData.useOpenAICompatible ?? false
   );
 
   // Render AI Provider tab
-  const renderAITab = () => (
-    <div className="tab-content">
-      <h3>AI Provider Configuration</h3>
-      
-      <div className="settings-section">
-        <div className="toggle-group">
-          <div className="toggle-label">
-            <span>Use OpenAI-Compatible API</span>
-            <small>Enable to use NVIDIA NIM, LM Studio, or other OpenAI-compatible endpoints</small>
+  const renderAITab = () => {
+    const currentMode = (formData.provider_mode === 'openai' || formData.useOpenAICompatible) ? 'openai' : 'embedded';
+
+    return (
+      <div className="tab-content">
+        <h3>AI Provider Configuration</h3>
+
+        {/* Provider Mode Selection Cards */}
+        <div className="form-group" style={{ marginBottom: '22px' }}>
+          <label style={{ fontWeight: 600, display: 'block', marginBottom: '8px' }}>Execution Mode</label>
+          <div className="mode-selector-grid">
+            <button
+              type="button"
+              className={`mode-selector-card ${currentMode === 'embedded' ? 'active' : ''}`}
+              onClick={() => handleSelectMode('embedded')}
+            >
+              <div className="mode-selector-card-header">
+                <span className="mode-selector-card-title">
+                  💻 Embedded llama.cpp
+                </span>
+                <span className="mode-selector-radio">
+                  {currentMode === 'embedded' && <span className="mode-selector-radio-dot" />}
+                </span>
+              </div>
+              <span className="mode-selector-card-desc">
+                Local built-in engine (~200MB RAM, 100% offline & private)
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={`mode-selector-card ${currentMode === 'openai' ? 'active' : ''}`}
+              onClick={() => handleSelectMode('openai')}
+            >
+              <div className="mode-selector-card-header">
+                <span className="mode-selector-card-title">
+                  🌐 OpenAI-Compatible
+                </span>
+                <span className="mode-selector-radio">
+                  {currentMode === 'openai' && <span className="mode-selector-radio-dot" />}
+                </span>
+              </div>
+              <span className="mode-selector-card-desc">
+                Cloud or custom API (NVIDIA NIM, Groq, LM Studio, vLLM, OpenAI)
+              </span>
+            </button>
           </div>
-          <div
-            className={`toggle-switch ${formData.useOpenAICompatible ? 'active' : ''}`}
-            onClick={() => handleChange('useOpenAICompatible', !formData.useOpenAICompatible)}
-          />
         </div>
-      </div>
 
-      <div className="settings-section">
-        <div className="toggle-group">
-          <div className="toggle-label">
-            <span>Disable Streaming</span>
-            <small>Some providers/models don't support streaming. Enable this to use non-streaming mode.</small>
-          </div>
-          <div
-            className={`toggle-switch ${formData.disableStreaming ? 'active' : ''}`}
-            onClick={() => handleChange('disableStreaming', !formData.disableStreaming)}
-          />
-        </div>
-      </div>
+        {currentMode === 'embedded' ? (
+          <div className="settings-grid">
+            {/* Model Card */}
+            <div style={{
+              gridColumn: '1 / -1',
+              padding: '14px 16px',
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              marginBottom: '10px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '16px',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <strong style={{ fontSize: '15px' }}>Model: SmolLM2-360M (Q4_K_M GGUF)</strong>
+                <div style={{ fontSize: '12px', color: '#a0aec0', marginTop: '4px' }}>
+                  Ultra-lightweight in-app inference via embedded <code>llama.cpp</code> (~200 MB RAM)
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <span className="badge" style={{ padding: '4px 8px', borderRadius: '4px', background: '#3182ce', fontSize: '11px', fontWeight: 600 }}>CPU Hardware</span>
+                <span className="badge" style={{ padding: '4px 8px', borderRadius: '4px', background: '#38a169', fontSize: '11px', fontWeight: 600 }}>Thinking: OFF</span>
+                <span className="badge" style={{ padding: '4px 8px', borderRadius: '4px', background: '#805ad5', fontSize: '11px', fontWeight: 600 }}>Streaming: ON</span>
+              </div>
+            </div>
 
-      {!formData.useOpenAICompatible ? (
-        <div className="settings-grid">
-          <div className="form-group">
-            <label htmlFor="server_url">Ollama Endpoint URL</label>
-            <input
-              type="text"
-              id="server_url"
-              className="input"
-              value={formData.server_url}
-              onChange={(e) => handleChange('server_url', e.target.value)}
-              placeholder="http://localhost:11434"
-            />
-            <small>Local Ollama server URL (default: http://localhost:11434)</small>
-          </div>
+            {/* CPU Threads */}
+            <div className="form-group">
+              <label htmlFor="embedded_max_threads">CPU Threads Limit</label>
+              <input
+                type="number"
+                id="embedded_max_threads"
+                className="input"
+                min="1"
+                max="32"
+                value={formData.embedded_max_threads ?? 6}
+                onChange={(e) => handleChange('embedded_max_threads', parseInt(e.target.value) || 6)}
+              />
+              <small>Auto-detects CPU cores and caps execution to this limit (recommended: 4–6)</small>
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="model">Ollama Model</label>
-            <div className="model-input-group">
+            {/* Context Size */}
+            <div className="form-group">
+              <label htmlFor="embedded_context_size">Context Window (Tokens)</label>
+              <select
+                id="embedded_context_size"
+                className="select-input"
+                value={formData.embedded_context_size ?? 4096}
+                onChange={(e) => handleChange('embedded_context_size', parseInt(e.target.value) || 4096)}
+              >
+                <option value={2048}>2048 tokens (2K)</option>
+                <option value={3072}>3072 tokens (3K)</option>
+                <option value={4096}>4096 tokens (4K - Recommended)</option>
+              </select>
+              <small>Maximum context length for rewriting and text analysis</small>
+            </div>
+
+            {/* Thinking Toggle */}
+            <div className="form-group toggle-group" style={{ gridColumn: '1 / -1' }}>
+              <div className="toggle-label">
+                <span>Disable Thinking (Thinking: OFF)</span>
+                <small>Filters out reasoning/thought chains so you get clean, instant rewritten text</small>
+              </div>
+              <div
+                className={`toggle-switch ${formData.disable_thinking !== false ? 'active' : ''}`}
+                onClick={() => handleChange('disable_thinking', formData.disable_thinking === false)}
+              />
+            </div>
+
+            {/* Streaming Toggle */}
+            <div className="form-group toggle-group" style={{ gridColumn: '1 / -1' }}>
+              <div className="toggle-label">
+                <span>Token Streaming (Streaming: ON)</span>
+                <small>Real-time token generation for fast responsive UI and ghost typing</small>
+              </div>
+              <div
+                className={`toggle-switch ${!formData.disableStreaming ? 'active' : ''}`}
+                onClick={() => handleChange('disableStreaming', !formData.disableStreaming)}
+              />
+            </div>
+
+            {/* GGUF Model Path */}
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label htmlFor="embedded_model_path" style={{ margin: 0 }}>GGUF Model File Path</label>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '3px 10px', fontSize: '12px' }}
+                  onClick={() => (SettingsAPI as any).OpenModelsFolder?.()}
+                >
+                  📁 Open Models Folder (%APPDATA%)
+                </button>
+              </div>
               <input
                 type="text"
-                id="model"
+                id="embedded_model_path"
                 className="input"
-                value={formData.model}
-                onChange={(e) => handleChange('model', e.target.value)}
-                placeholder="gemma3:1b"
-                list="ollama-models"
+                value={formData.embedded_model_path || ''}
+                onChange={(e) => handleChange('embedded_model_path', e.target.value)}
+                placeholder="%APPDATA%\TheCopyfather\models\qwen3-1.7b-q4_k_m.gguf"
               />
-              <datalist id="ollama-models">
-                {availableModels.map((model) => (
-                  <option key={model} value={model} />
-                ))}
-              </datalist>
+              <small>Leave empty or set path. Standard AppData location: <code>%APPDATA%\TheCopyfather\models\</code></small>
             </div>
-            <small>Model to use for rewriting (e.g., gemma3:1b, llama3:8b)</small>
-          </div>
 
-          <div className="form-group">
-            <label htmlFor="api_key">Ollama API Key (Optional)</label>
-            <input
-              type="password"
-              id="api_key"
-              className="input"
-              value={formData.api_key || ''}
-              onChange={(e) => handleChange('api_key', e.target.value)}
-              placeholder="Leave empty for local Ollama"
-            />
-            <small>Only needed for remote Ollama instances with authentication</small>
+            {/* llama-server binary path */}
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label htmlFor="embedded_binary_path" style={{ margin: 0 }}>Embedded Engine Path</label>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '3px 10px', fontSize: '12px' }}
+                  onClick={() => (SettingsAPI as any).OpenEngineFolder?.()}
+                >
+                  📁 Open Engine Folder (%APPDATA%)
+                </button>
+              </div>
+              <input
+                type="text"
+                id="embedded_binary_path"
+                className="input"
+                value={formData.embedded_binary_path || ''}
+                onChange={(e) => handleChange('embedded_binary_path', e.target.value)}
+                placeholder="%APPDATA%\TheCopyfather\engine\llama-server.exe"
+              />
+              <small>Leave empty or set path. Standard AppData location: <code>%APPDATA%\TheCopyfather\engine\</code></small>
+            </div>
           </div>
+        ) : (
+          <div className="settings-grid">
+            {/* OpenAI Provider Overview Card */}
+            <div style={{
+              gridColumn: '1 / -1',
+              padding: '14px 16px',
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              marginBottom: '10px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '16px',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <strong style={{ fontSize: '15px' }}>Provider: Remote / Cloud OpenAI-Compatible API</strong>
+                <div style={{ fontSize: '12px', color: '#a0aec0', marginTop: '4px' }}>
+                  Connect to any standard OpenAI chat/completions endpoint
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <span className="badge" style={{ padding: '4px 8px', borderRadius: '4px', background: '#3182ce', fontSize: '11px', fontWeight: 600 }}>Cloud / Local API</span>
+                <span className="badge" style={{ padding: '4px 8px', borderRadius: '4px', background: '#38a169', fontSize: '11px', fontWeight: 600 }}>Guardrails: ACTIVE</span>
+                <span className="badge" style={{ padding: '4px 8px', borderRadius: '4px', background: '#805ad5', fontSize: '11px', fontWeight: 600 }}>Streaming: {formData.disableStreaming ? 'OFF' : 'ON'}</span>
+              </div>
+            </div>
+
+            {/* Quick Provider Presets */}
+            <div style={{ gridColumn: '1 / -1', marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                Quick Endpoint Presets:
+              </label>
+              <div className="preset-chips-container">
+                {OPENAI_PRESETS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    className="preset-chip"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        openAIBaseURL: preset.baseURL,
+                        openAIModel: preset.model,
+                      }));
+                    }}
+                    title={`Use ${preset.name} (${preset.baseURL})`}
+                  >
+                    ⚡ {preset.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="openAIBaseURL">API Endpoint URL</label>
+              <input
+                type="text"
+                id="openAIBaseURL"
+                className="input"
+                value={formData.openAIBaseURL || ''}
+                onChange={(e) => handleChange('openAIBaseURL', e.target.value)}
+                placeholder="https://integrate.api.nvidia.com/v1"
+              />
+              <small>OpenAI-compatible API endpoint (e.g., NVIDIA NIM, LM Studio, vLLM, OpenAI)</small>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="openAIModel">Model</label>
+              <input
+                type="text"
+                id="openAIModel"
+                className="input"
+                value={formData.openAIModel || ''}
+                onChange={(e) => handleChange('openAIModel', e.target.value)}
+                placeholder="mistralai/mistral-7b-instruct"
+              />
+              <small>Model identifier (e.g. mistralai/mistral-7b-instruct, gpt-4o-mini)</small>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="openAIAPIKey">API Key</label>
+              <input
+                type="password"
+                id="openAIAPIKey"
+                className="input"
+                value={formData.openAIAPIKey || ''}
+                onChange={(e) => handleChange('openAIAPIKey', e.target.value)}
+                placeholder="Enter your API key (leave blank for local models)"
+              />
+              <small>Your API key for the remote service (stored securely)</small>
+            </div>
+
+            <div className="form-group toggle-group" style={{ gridColumn: '1 / -1' }}>
+              <div className="toggle-label">
+                <span>Disable Streaming</span>
+                <small>Enable if your remote provider does not support SSE streaming</small>
+              </div>
+              <div
+                className={`toggle-switch ${formData.disableStreaming ? 'active' : ''}`}
+                onClick={() => handleChange('disableStreaming', !formData.disableStreaming)}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="settings-actions" style={{ marginTop: '20px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={testConnection}
+            disabled={testingConnection}
+          >
+            {testingConnection ? 'Testing...' : 'Test Connection'}
+          </button>
+          {renderConnectionStatus()}
         </div>
-      ) : (
-        <div className="settings-grid">
-          <div className="form-group">
-            <label htmlFor="openAIBaseURL">API Endpoint URL</label>
-            <input
-              type="text"
-              id="openAIBaseURL"
-              className="input"
-              value={formData.openAIBaseURL}
-              onChange={(e) => handleChange('openAIBaseURL', e.target.value)}
-              placeholder="https://integrate.api.nvidia.com/v1"
-            />
-            <small>OpenAI-compatible API endpoint (e.g., NVIDIA NIM, LM Studio)</small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="openAIModel">Model</label>
-            <input
-              type="text"
-              id="openAIModel"
-              className="input"
-              value={formData.openAIModel}
-              onChange={(e) => handleChange('openAIModel', e.target.value)}
-              placeholder="mistralai/mistral-7b-instruct"
-            />
-            <small>Model identifier (e.g., mistralai/mistral-7b-instruct)</small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="openAIAPIKey">API Key</label>
-            <input
-              type="password"
-              id="openAIAPIKey"
-              className="input"
-              value={formData.openAIAPIKey || ''}
-              onChange={(e) => handleChange('openAIAPIKey', e.target.value)}
-              placeholder="Enter your API key"
-            />
-            <small>Your API key for the OpenAI-compatible service</small>
-          </div>
-        </div>
-      )}
-
-      <div className="settings-actions">
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={testConnection}
-          disabled={testingConnection}
-        >
-          {testingConnection ? 'Testing...' : 'Test Connection'}
-        </button>
-        {renderConnectionStatus()}
       </div>
-    </div>
-  );
+    );
+  };
 
   // Render Updates tab
   const renderUpdatesTab = () => (

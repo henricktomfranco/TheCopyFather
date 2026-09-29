@@ -9,6 +9,7 @@ import '../styles/Popup.css'
 import { useGenerateRewrite } from '../hooks/useGenerateRewrite'
 import { useClipboardPaste } from '../hooks/useClipboardPaste'
 import { PopupHeader } from './PopupHeader'
+import { ToneSliders } from './ToneSliders'
 import { StyleSelector } from './StyleSelector'
 import { ResultRenderer } from './ResultRenderer'
 import { ActionFooter } from './ActionFooter'
@@ -62,9 +63,11 @@ export default function Popup({
   const initialRewriteStyle = isGrammarDefault ? 'grammar' : (REWRITE_STYLES.find(s => s.value === defaultStyle)?.value || 'standard')
   const initialAnalysisStyle = 'summarize'
 
-  const [mainMode, setMainMode] = useState<'rewrite' | 'analyze'>(initialMode)
+  const [mainMode, setMainMode] = useState<'rewrite' | 'sliders' | 'analyze'>(initialMode)
   const [rewriteStyle, setRewriteStyle] = useState(initialRewriteStyle)
   const [analysisStyle, setAnalysisStyle] = useState(initialAnalysisStyle)
+  const [formality, setFormality] = useState(50)
+  const [length, setLength] = useState(50)
   const [autoPasteMode, setAutoPasteMode] = useState<string>('ask')
   
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -110,7 +113,8 @@ export default function Popup({
     enableFormattingRef,
     mainMode,
     rewriteStyle,
-    analysisStyle
+    analysisStyle,
+    sliderParams: { formality, length }
   })
 
   const {
@@ -216,7 +220,9 @@ export default function Popup({
   useEffect(() => {
     if (!originalText) return
 
-    runtime.WindowSetSize(500, 680)
+    const targetW = Math.min(500, window.screen?.availWidth ? window.screen.availWidth - 40 : 500)
+    const targetH = Math.min(680, window.screen?.availHeight ? window.screen.availHeight - 60 : 680)
+    runtime.WindowSetSize(targetW, targetH)
     runtime.WindowSetAlwaysOnTop(true)
     runtime.WindowShow()
 
@@ -256,12 +262,14 @@ export default function Popup({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handlePrevVariation, handleNextVariation, handleRewrite])
 
-  const handleMainModeChange = (newMode: 'rewrite' | 'analyze') => {
+  const handleMainModeChange = (newMode: 'rewrite' | 'sliders' | 'analyze') => {
     if (newMode === mainMode) return
     setMainMode(newMode)
     const useTextType = shouldUseTextType()
     if (newMode === 'analyze') {
       debouncedGenerate('analyze', analysisStyle, useTextType)
+    } else if (newMode === 'sliders') {
+      debouncedGenerate('sliders', 'sliders', useTextType, { formality, length })
     } else {
       debouncedGenerate('rewrite', rewriteStyle, useTextType)
     }
@@ -303,33 +311,47 @@ export default function Popup({
       />
 
       <div className="popup-content">
-        <StyleSelector
-          dropdownRef={dropdownRef}
-          textTypeDropdownRef={textTypeDropdownRef}
-          dropdownOpen={dropdownOpen}
-          setDropdownOpen={setDropdownOpen}
-          textTypeDropdownOpen={textTypeDropdownOpen}
-          setTextTypeDropdownOpen={setTextTypeDropdownOpen}
-          mainMode={mainMode}
-          rewriteStyle={rewriteStyle}
-          analysisStyle={analysisStyle}
-          REWRITE_STYLES={REWRITE_STYLES}
-          ANALYSIS_STYLES={ANALYSIS_STYLES}
-          currentRewriteStyleData={currentRewriteStyleData}
-          currentAnalysisStyleData={currentAnalysisStyleData}
-          handleRewriteStyleChange={handleRewriteStyleChange}
-          handleAnalysisStyleChange={handleAnalysisStyleChange}
-          selectedTextType={selectedTextType}
-          availableTextTypes={availableTextTypes}
-          isUserOverride={isUserOverride}
-          handleTextTypeChange={handleTextTypeChange}
-        />
+        {mainMode === 'sliders' ? (
+          <ToneSliders
+            formality={formality}
+            setFormality={setFormality}
+            length={length}
+            setLength={setLength}
+            onApply={() => generate('sliders', 'sliders', shouldUseTextType(), { formality, length })}
+            loading={loading}
+          />
+        ) : (
+          <StyleSelector
+            dropdownRef={dropdownRef}
+            textTypeDropdownRef={textTypeDropdownRef}
+            dropdownOpen={dropdownOpen}
+            setDropdownOpen={setDropdownOpen}
+            textTypeDropdownOpen={textTypeDropdownOpen}
+            setTextTypeDropdownOpen={setTextTypeDropdownOpen}
+            mainMode={mainMode}
+            rewriteStyle={rewriteStyle}
+            analysisStyle={analysisStyle}
+            REWRITE_STYLES={REWRITE_STYLES}
+            ANALYSIS_STYLES={ANALYSIS_STYLES}
+            currentRewriteStyleData={currentRewriteStyleData}
+            currentAnalysisStyleData={currentAnalysisStyleData}
+            handleRewriteStyleChange={handleRewriteStyleChange}
+            handleAnalysisStyleChange={handleAnalysisStyleChange}
+            selectedTextType={selectedTextType}
+            availableTextTypes={availableTextTypes}
+            isUserOverride={isUserOverride}
+            handleTextTypeChange={handleTextTypeChange}
+          />
+        )}
 
         <div className={`result-section ${loading ? 'loading' : ''}`}>
           <div className="result-header">
             <div className="result-meta">
               {mainMode === 'rewrite' && rewriteStyle === 'grammar' && !loading && result && (
                 <span className="badge-success">✓ Grammar & Style</span>
+              )}
+              {mainMode === 'sliders' && !loading && result && (
+                <span className="badge-sliders">🎛️ Custom Tone</span>
               )}
               {loading && result && (
                 <span className="streaming-badge">
@@ -383,7 +405,13 @@ export default function Popup({
                 <p>{error}</p>
                 <button
                   className="btn-secondary"
-                  onClick={() => generate(mainMode, mainMode === 'analyze' ? analysisStyle : rewriteStyle, shouldUseTextType())}
+                  onClick={() => {
+                    if (mainMode === 'sliders') {
+                      generate('sliders', 'sliders', shouldUseTextType(), { formality, length })
+                    } else {
+                      generate(mainMode, mainMode === 'analyze' ? analysisStyle : rewriteStyle, shouldUseTextType())
+                    }
+                  }}
                 >
                   Retry
                 </button>

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"textrewriter/internal/config"
+	"textrewriter/internal/guardrails"
 	"textrewriter/internal/ollama"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -626,7 +627,13 @@ func cleanResponse(text string) string {
 	// Finally, ensure we don't have leading/trailing whitespace
 	text = strings.TrimSpace(text)
 
-	// 7. Final cleanup
+	// 7. Guardrail: Detect and clean repetition degeneration loops
+	repResult := guardrails.DetectAndCleanRepetition(text)
+	if repResult.HasLoop {
+		text = repResult.CleanText
+	}
+
+	// 8. Final cleanup
 	return strings.TrimSpace(text)
 }
 
@@ -750,9 +757,9 @@ OUTPUT: Return ONLY the insights. Nothing before or after.`,
 	}
 
 	if prompt, ok := plainPrompts[style]; ok {
-		return prompt
+		return prompt + guardrails.AntiHallucinationGuardrails
 	}
-	return "Rewrite the text appropriately. Return only the rewritten text."
+	return "Rewrite the text appropriately. Return only the rewritten text." + guardrails.AntiHallucinationGuardrails
 }
 
 // getPromptForTextType returns a prompt customized for the specific text type
@@ -769,14 +776,14 @@ func (r *Rewriter) getPromptForTextType(style string, textType TextType, enableF
 
 	typeInstructions := map[TextType]map[string]string{
 		TextTypeEmail: {
-			"grammar":    "You are an expert editor specializing in professional email communication.\n\nTASK: Fix all grammar, spelling, punctuation, and awkward phrasing in this email while preserving the original meaning, intent, and structure.\n\nRULES:\n- ONLY fix errors in the text provided - do not add or remove content\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- If the input lacks a proper greeting or sign-off, add appropriate ones based on context\n- Use **bold** for key terms and important information\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the corrected email as plain text. Nothing before or after.",
-			"paraphrase": "You are an expert writer specializing in professional communication.\n\nTASK: Rewrite this email using different words and sentence structures while preserving the exact same meaning and intent.\n\nRULES:\n- Use varied vocabulary and restructured sentences\n- Keep all original information - do not add or remove anything\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- If the input lacks a proper greeting or sign-off, add appropriate ones based on context\n- Use **bold** for key terms\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the rewritten email as plain text. Nothing before or after.",
-			"standard":   "You are a professional writer specializing in clear, effective communication.\n\nTASK: Rewrite this email to be clear, natural, and well-structured while preserving the original meaning.\n\nRULES:\n- Improve clarity, flow, and readability\n- Keep all original information - do not add or remove anything\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- If the input lacks a proper greeting or sign-off, add appropriate ones based on context\n- Use **bold** for key terms and important points\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the rewritten email as plain text. Nothing before or after.",
-			"formal":     "You are a business communication expert specializing in formal correspondence.\n\nTASK: Rewrite this email in a highly formal, professional tone suitable for official communication.\n\nRULES:\n- Use formal greetings (e.g., Dear [Name],) and closings (e.g., Sincerely,)\n- Replace contractions with full forms\n- Use precise, elevated vocabulary\n- Keep all original information - do not add or remove anything\n- If the input lacks a proper greeting or sign-off, add formal ones based on context\n- Use **bold** for key terms and important references\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the formal email as plain text. Nothing before or after.",
-			"casual":     "You are a friendly writer who excels at warm, approachable communication.\n\nTASK: Rewrite this email in a warm, casual, and conversational tone while keeping it respectful.\n\nRULES:\n- Use casual greetings (e.g., Hi [Name],) and warm closings (e.g., Best,)\n- Use contractions and natural conversational language\n- Keep all original information - do not add or remove anything\n- If the input lacks a proper greeting or sign-off, add casual ones based on context\n- Use **bold** for key points\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the casual email as plain text. Nothing before or after.",
-			"creative":   "You are a creative writer who makes emails engaging and memorable.\n\nTASK: Rewrite this email to be expressive and vivid while maintaining the core message.\n\nRULES:\n- Use expressive language and vivid descriptions\n- Keep all original information - do not add or remove anything\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- If the input lacks a proper greeting or sign-off, add engaging ones based on context\n- Use **bold** for emphasis and key moments\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the creative email as plain text. Nothing before or after.",
-			"short":      "You are a concise editor who specializes in tight, efficient writing.\n\nTASK: Shorten this email by removing unnecessary words while preserving ALL key information.\n\nRULES:\n- Remove redundancy and filler words only\n- Keep all factual information, requests, and important details\n- Preserve the email structure: greeting, body, and sign-off\n- If the input lacks a proper greeting or sign-off, add brief ones based on context\n- Use **bold** for critical information\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the shortened email as plain text. Nothing before or after.",
-			"expand":     "You are an expert writer who adds valuable context and detail.\n\nTASK: Expand this email by adding relevant context, elaboration, and helpful detail.\n\nRULES:\n- Add useful context and supporting detail that relates to the original content\n- Do not invent facts, names, or specific details\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- If the input lacks a proper greeting or sign-off, add appropriate ones based on context\n- Use **bold** for key terms\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the expanded email as plain text. Nothing before or after.",
+			"grammar":    "You are an expert editor specializing in professional email communication.\n\nTASK: Fix all grammar, spelling, punctuation, and awkward phrasing in this email while preserving the original meaning, intent, and structure.\n\nRULES:\n- ONLY fix errors in the text provided - do not add or remove content\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for key terms and important information\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the corrected email as plain text. Nothing before or after.",
+			"paraphrase": "You are an expert writer specializing in professional communication.\n\nTASK: Rewrite this email using different words and sentence structures while preserving the exact same meaning and intent.\n\nRULES:\n- Use varied vocabulary and restructured sentences\n- Keep all original information - do not add or remove anything\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for key terms\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the rewritten email as plain text. Nothing before or after.",
+			"standard":   "You are a professional writer specializing in clear, effective communication.\n\nTASK: Rewrite this email to be clear, natural, and well-structured while preserving the original meaning.\n\nRULES:\n- Improve clarity, flow, and readability\n- Keep all original information - do not add or remove anything\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for key terms and important points\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the rewritten email as plain text. Nothing before or after.",
+			"formal":     "You are a business communication expert specializing in formal correspondence.\n\nTASK: Rewrite this email in a highly formal, professional tone suitable for official communication.\n\nRULES:\n- Use formal greetings (e.g., Dear [Name],) and closings (e.g., Sincerely,)\n- Replace contractions with full forms\n- Use precise, elevated vocabulary\n- Keep all original information - do not add or remove anything\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for key terms and important references\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the formal email as plain text. Nothing before or after.",
+			"casual":     "You are a friendly writer who excels at warm, approachable communication.\n\nTASK: Rewrite this email in a warm, casual, and conversational tone while keeping it respectful.\n\nRULES:\n- Use casual greetings (e.g., Hi [Name],) and warm closings (e.g., Best,)\n- Use contractions and natural conversational language\n- Keep all original information - do not add or remove anything\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for key points\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the casual email as plain text. Nothing before or after.",
+			"creative":   "You are a creative writer who makes emails engaging and memorable.\n\nTASK: Rewrite this email to be expressive and vivid while maintaining the core message.\n\nRULES:\n- Use expressive language and vivid descriptions\n- Keep all original information - do not add or remove anything\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for emphasis and key moments\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the creative email as plain text. Nothing before or after.",
+			"short":      "You are a concise editor who specializes in tight, efficient writing.\n\nTASK: Shorten this email by removing unnecessary words while preserving ALL key information.\n\nRULES:\n- Remove redundancy and filler words only\n- Keep all factual information, requests, and important details\n- Preserve the email structure: greeting, body, and sign-off\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for critical information\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the shortened email as plain text. Nothing before or after.",
+			"expand":     "You are an expert writer who adds valuable context and detail.\n\nTASK: Expand this email by adding relevant context, elaboration, and helpful detail.\n\nRULES:\n- Add useful context and supporting detail that relates to the original content\n- Do not invent facts, names, or specific details\n- Preserve the email structure: greeting, body paragraphs, and sign-off\n- Preserve existing greetings and sign-offs if present; do NOT invent fictional names or placeholders\n- Use **bold** for key terms\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the expanded email as plain text. Nothing before or after.",
 			"summarize":  "You are a strategic analyst who distills complex information into clear summaries.\n\nTASK: Summarize this email, identifying the purpose, key points, and any required actions.\n\nRULES:\n- Identify the email's primary purpose\n- Highlight action items, deadlines, or decisions needed\n- Keep it to 2-4 sentences maximum\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the summary as plain text. Nothing before or after.",
 			"bullets":    "You are an analyst who extracts and organizes key information.\n\nTASK: Extract the key points from this email as a clear, organized bullet list.\n\nRULES:\n- List purpose, requests, deadlines, and action items\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\n- NEVER invent information not present in the original\nOUTPUT: Return ONLY the bullet list as plain text. Nothing before or after.",
 			"insights":   "You are a strategic communication analyst who reads between the lines.\n\nTASK: Analyze this email for insights beyond the surface message.\n\nRULES:\n- Identify intent, tone, and implicit requests\n- Assess relationship dynamics\n- NEVER use XML tags, HTML, or any markup in your response\n- NEVER add conversational filler, explanations, or placeholder text\nOUTPUT: Return ONLY the analysis as plain text. Nothing before or after.",
@@ -837,7 +844,7 @@ func (r *Rewriter) getPromptForTextType(style string, textType TextType, enableF
 
 	if typeMap, ok := typeInstructions[textType]; ok {
 		if instruction, ok := typeMap[style]; ok {
-			return instruction
+			return instruction + guardrails.AntiHallucinationGuardrails
 		}
 	}
 
@@ -871,6 +878,49 @@ type StreamChunk struct {
 	Error string `json:"error,omitempty"`
 }
 
+// streamWithGuardrails wraps streamChan with active repetition loop detection and formatting
+func (r *Rewriter) streamWithGuardrails(streamChan <-chan ollama.ClientStreamResponse, enableFormatting bool) <-chan StreamChunk {
+	outputChan := make(chan StreamChunk, 100)
+	go func() {
+		defer close(outputChan)
+		var fullText strings.Builder
+		var lastCleaned string
+		for resp := range streamChan {
+			if resp.Error != nil {
+				outputChan <- StreamChunk{Error: resp.Error.Error()}
+				return
+			}
+			fullText.WriteString(resp.Response)
+			raw := fullText.String()
+
+			// Guardrail: Active repetition loop detection during streaming
+			repResult := guardrails.DetectAndCleanRepetition(raw)
+			if repResult.HasLoop {
+				cleaned := cleanResponse(repResult.CleanText)
+				if !enableFormatting {
+					cleaned = stripMarkdownFormatting(cleaned)
+				}
+				outputChan <- StreamChunk{Text: cleaned, Done: true}
+				return
+			}
+
+			cleaned := cleanResponse(raw)
+			if !enableFormatting {
+				cleaned = stripMarkdownFormatting(cleaned)
+			}
+			if cleaned != "" && cleaned != lastCleaned {
+				lastCleaned = cleaned
+				outputChan <- StreamChunk{Text: cleaned}
+			}
+			if resp.Done {
+				outputChan <- StreamChunk{Done: true}
+				return
+			}
+		}
+	}()
+	return outputChan
+}
+
 // GenerateStream generates a rewrite and streams the response
 func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-chan StreamChunk, error) {
 	if !isValidStyle(style) {
@@ -883,30 +933,7 @@ func (r *Rewriter) GenerateStream(ctx context.Context, text, style string) (<-ch
 		return nil, err
 	}
 
-	outputChan := make(chan StreamChunk, 100)
-	go func() {
-		defer close(outputChan)
-		var fullText strings.Builder
-		var lastCleaned string
-		for resp := range streamChan {
-			if resp.Error != nil {
-				outputChan <- StreamChunk{Error: resp.Error.Error()}
-				return
-			}
-			fullText.WriteString(resp.Response)
-			cleaned := cleanResponse(fullText.String())
-			if cleaned != "" && cleaned != lastCleaned {
-				lastCleaned = cleaned
-				outputChan <- StreamChunk{Text: cleaned}
-			}
-			if resp.Done {
-				outputChan <- StreamChunk{Done: true}
-				return
-			}
-		}
-	}()
-
-	return outputChan, nil
+	return r.streamWithGuardrails(streamChan, true), nil
 }
 
 // GenerateStreamWithFormatting generates a rewrite with optional formatting and streams the response
@@ -931,33 +958,7 @@ func (r *Rewriter) GenerateStreamWithFormatting(ctx context.Context, text, style
 		return nil, err
 	}
 
-	outputChan := make(chan StreamChunk, 100)
-	go func() {
-		defer close(outputChan)
-		var fullText strings.Builder
-		var lastCleaned string
-		for resp := range streamChan {
-			if resp.Error != nil {
-				outputChan <- StreamChunk{Error: resp.Error.Error()}
-				return
-			}
-			fullText.WriteString(resp.Response)
-			cleaned := cleanResponse(fullText.String())
-			if !enableFormatting {
-				cleaned = stripMarkdownFormatting(cleaned)
-			}
-			if cleaned != lastCleaned {
-				lastCleaned = cleaned
-				outputChan <- StreamChunk{Text: cleaned}
-			}
-			if resp.Done {
-				outputChan <- StreamChunk{Done: true}
-				return
-			}
-		}
-	}()
-
-	return outputChan, nil
+	return r.streamWithGuardrails(streamChan, enableFormatting), nil
 }
 
 // GenerateStreamWithTextType generates a rewrite with specific text type and streams the response
@@ -972,33 +973,7 @@ func (r *Rewriter) GenerateStreamWithTextType(ctx context.Context, text, style s
 		return nil, err
 	}
 
-	outputChan := make(chan StreamChunk, 100)
-	go func() {
-		defer close(outputChan)
-		var fullText strings.Builder
-		var lastCleaned string
-		for resp := range streamChan {
-			if resp.Error != nil {
-				outputChan <- StreamChunk{Error: resp.Error.Error()}
-				return
-			}
-			fullText.WriteString(resp.Response)
-			cleaned := cleanResponse(fullText.String())
-			if !enableFormatting {
-				cleaned = stripMarkdownFormatting(cleaned)
-			}
-			if cleaned != lastCleaned {
-				lastCleaned = cleaned
-				outputChan <- StreamChunk{Text: cleaned}
-			}
-			if resp.Done {
-				outputChan <- StreamChunk{Done: true}
-				return
-			}
-		}
-	}()
-
-	return outputChan, nil
+	return r.streamWithGuardrails(streamChan, enableFormatting), nil
 }
 
 // GenerateStreamAnalysis generates an analysis and streams the response
@@ -1013,30 +988,7 @@ func (r *Rewriter) GenerateStreamAnalysis(ctx context.Context, text, style strin
 		return nil, err
 	}
 
-	outputChan := make(chan StreamChunk, 100)
-	go func() {
-		defer close(outputChan)
-		var fullText strings.Builder
-		var lastCleaned string
-		for resp := range streamChan {
-			if resp.Error != nil {
-				outputChan <- StreamChunk{Error: resp.Error.Error()}
-				return
-			}
-			fullText.WriteString(resp.Response)
-			cleaned := cleanResponse(fullText.String())
-			if cleaned != "" && cleaned != lastCleaned {
-				lastCleaned = cleaned
-				outputChan <- StreamChunk{Text: cleaned}
-			}
-			if resp.Done {
-				outputChan <- StreamChunk{Done: true}
-				return
-			}
-		}
-	}()
-
-	return outputChan, nil
+	return r.streamWithGuardrails(streamChan, true), nil
 }
 
 // GenerateStreamAnalysisWithTextType generates an analysis with specific text type and streams the response
@@ -1051,37 +1003,84 @@ func (r *Rewriter) GenerateStreamAnalysisWithTextType(ctx context.Context, text,
 		return nil, err
 	}
 
-	outputChan := make(chan StreamChunk, 100)
-	go func() {
-		defer close(outputChan)
-		var fullText strings.Builder
-		var lastCleaned string
-		for resp := range streamChan {
-			if resp.Error != nil {
-				outputChan <- StreamChunk{Error: resp.Error.Error()}
-				return
-			}
-			fullText.WriteString(resp.Response)
-			cleaned := cleanResponse(fullText.String())
-			if !enableFormatting {
-				cleaned = stripMarkdownFormatting(cleaned)
-			}
-			if cleaned != lastCleaned {
-				lastCleaned = cleaned
-				outputChan <- StreamChunk{Text: cleaned}
-			}
-			if resp.Done {
-				outputChan <- StreamChunk{Done: true}
-				return
-			}
-		}
-	}()
-
-	return outputChan, nil
+	return r.streamWithGuardrails(streamChan, enableFormatting), nil
 }
 
 // GetStyleInfo returns information about a specific style
 func GetStyleInfo(style string) (StyleInfoData, bool) {
 	info, ok := StyleInfo[style]
 	return info, ok
+}
+
+// GenerateRewriteWithSliders generates a rewrite using continuous formality (0-100) and length (0-100)
+func (r *Rewriter) GenerateRewriteWithSliders(ctx context.Context, text string, formality, length int, textType TextType, enableFormatting bool) (RewriteOption, error) {
+	if text == "" {
+		return RewriteOption{Style: "sliders", Error: "text cannot be empty"}, fmt.Errorf("text cannot be empty")
+	}
+	if len(text) > ollama.MaxTextLength {
+		return RewriteOption{Style: "sliders", Error: fmt.Sprintf("text too long: %d characters (max %d)", len(text), ollama.MaxTextLength)}, fmt.Errorf("text too long")
+	}
+
+	var systemPrompt string
+	if r != nil && r.config != nil {
+		systemPrompt = r.config.GetSliderPrompt(formality, length, string(textType))
+	} else {
+		systemPrompt = config.DefaultConfig().GetSliderPrompt(formality, length, string(textType))
+	}
+	if !enableFormatting {
+		systemPrompt += "\nCRITICAL: Do NOT use markdown bolding (no **asterisks**) or formatting."
+	}
+
+	if r == nil || r.client == nil {
+		return RewriteOption{Style: "sliders", Error: "AI client not initialized"}, fmt.Errorf("AI client not initialized")
+	}
+
+	rewritten, err := r.client.GenerateRewrite(ctx, text, "sliders", systemPrompt)
+	if err != nil {
+		return RewriteOption{
+			Style: "sliders",
+			Error: err.Error(),
+		}, err
+	}
+
+	cleaned := cleanResponse(rewritten)
+	if !enableFormatting {
+		cleaned = stripMarkdownFormatting(cleaned)
+	}
+
+	return RewriteOption{
+		Style: "sliders",
+		Text:  cleaned,
+	}, nil
+}
+
+// GenerateStreamWithSliders generates a streaming rewrite using continuous formality and length sliders
+func (r *Rewriter) GenerateStreamWithSliders(ctx context.Context, text string, formality, length int, textType TextType, enableFormatting bool) (<-chan StreamChunk, error) {
+	if text == "" {
+		return nil, fmt.Errorf("text cannot be empty")
+	}
+	if len(text) > ollama.MaxTextLength {
+		return nil, fmt.Errorf("text too long: %d characters (max %d)", len(text), ollama.MaxTextLength)
+	}
+
+	var systemPrompt string
+	if r != nil && r.config != nil {
+		systemPrompt = r.config.GetSliderPrompt(formality, length, string(textType))
+	} else {
+		systemPrompt = config.DefaultConfig().GetSliderPrompt(formality, length, string(textType))
+	}
+	if !enableFormatting {
+		systemPrompt += "\nCRITICAL: Do NOT use markdown bolding (no **asterisks**) or formatting."
+	}
+
+	if r == nil || r.client == nil {
+		return nil, fmt.Errorf("AI client not initialized")
+	}
+
+	streamChan, err := r.client.GenerateStream(ctx, text, "sliders", systemPrompt)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.streamWithGuardrails(streamChan, enableFormatting), nil
 }

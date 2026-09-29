@@ -4,11 +4,11 @@
 
 An AI-powered text rewriting and analysis tool that runs seamlessly in the background. Like a ghostwriter, but with more *family connections*.
 
-![The Copyfather](https://img.shields.io/badge/AI-Powered-blue) ![Windows](https://img.shields.io/badge/Platform-Windows-green) ![Ollama](https://img.shields.io/badge/Ollama-Compatible-orange)
+![The Copyfather](https://img.shields.io/badge/AI-Powered-blue) ![Windows](https://img.shields.io/badge/Platform-Windows-green) ![llama.cpp](https://img.shields.io/badge/llama.cpp-Embedded-orange)
 
 ## 🎬 What's This?
 
-**The Copyfather** is your personal AI writing assistant that helps you rewrite, analyze, and improve text using local AI models via Ollama. Named after the famous line from *The Godfather*, this app makes you an offer you can't refuse: better writing, instantly.
+**The Copyfather** is your personal AI writing assistant that helps you rewrite, analyze, and improve text using self-contained local AI models via an embedded `llama.cpp` runtime (or optionally via Ollama/OpenAI API). Named after the famous line from *The Godfather*, this app makes you an offer you can't refuse: better writing, instantly.
 
 ## ✨ Features
 
@@ -68,24 +68,24 @@ wails build -platform windows/amd64
 
 The built executable will be at: `build/bin/thecopyfather.exe`
 
-## 🎯 First Run
+## 🎯 First Run (Embedded Mode — Zero External Apps)
 
-1. **Start Ollama**: Make sure Ollama is running (`ollama serve` or system tray)
+1. **Place Model & Engine in AppData**:
+   - Engine: `%APPDATA%\TheCopyfather\engine\llama-server.exe`
+   - Model: `%APPDATA%\TheCopyfather\models\qwen3-1.7b-q4_k_m.gguf`
+   *(Or click "Open Engine Folder" / "Open Models Folder" directly from Settings!)*
 2. **Run the app**: Double-click `thecopyfather.exe`
 3. **Configure**:
-   - Right-click system tray icon → Settings
-   - Set Ollama server (default: http://localhost:11434)
-   - Select model (e.g., gemma3:1b, llama2, mistral)
-   - Click "Test Connection"
-   - Configure Auto-Paste behavior (Ask/Always/Never)
+   - Right-click system tray icon → Settings → AI Provider
+   - Default is **Embedded llama.cpp** (CPU Hardware, Threads auto-capped, 4K Context, Thinking: OFF, Streaming: ON)
+   - Click "Test Connection" to verify the embedded runtime
    - Save settings
 
 4. **Use it**:
    - Select text in any application
    - Press `Ctrl+Shift+R`
    - Choose your rewrite/analysis style
-   - Click "Replace Selection"
-   - The improved text automatically replaces your selection!
+   - Click "Replace Selection" or let Auto-Paste replace it automatically!
 
 ## 🎮 Usage
 

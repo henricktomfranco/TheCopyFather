@@ -24,6 +24,15 @@ export namespace config {
 	    autoUpdateEnabled: boolean;
 	    currentVersion: string;
 	    updateChannel: string;
+	    provider_mode: string;
+	    embedded_model: string;
+	    embedded_model_path: string;
+	    embedded_binary_path: string;
+	    embedded_hardware: string;
+	    embedded_cpu_threads: number;
+	    embedded_max_threads: number;
+	    embedded_context_size: number;
+	    disable_thinking: boolean;
 	    useOpenAICompatible: boolean;
 	    openAIBaseURL: string;
 	    openAIModel: string;
@@ -59,6 +68,15 @@ export namespace config {
 	        this.autoUpdateEnabled = source["autoUpdateEnabled"];
 	        this.currentVersion = source["currentVersion"];
 	        this.updateChannel = source["updateChannel"];
+	        this.provider_mode = source["provider_mode"];
+	        this.embedded_model = source["embedded_model"];
+	        this.embedded_model_path = source["embedded_model_path"];
+	        this.embedded_binary_path = source["embedded_binary_path"];
+	        this.embedded_hardware = source["embedded_hardware"];
+	        this.embedded_cpu_threads = source["embedded_cpu_threads"];
+	        this.embedded_max_threads = source["embedded_max_threads"];
+	        this.embedded_context_size = source["embedded_context_size"];
+	        this.disable_thinking = source["disable_thinking"];
 	        this.useOpenAICompatible = source["useOpenAICompatible"];
 	        this.openAIBaseURL = source["openAIBaseURL"];
 	        this.openAIModel = source["openAIModel"];
@@ -83,6 +101,81 @@ export namespace diffmatchpatch {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Type = source["Type"];
 	        this.Text = source["Text"];
+	    }
+	}
+
+}
+
+export namespace engine {
+	
+	export class SetupStatus {
+	    engine_installed: boolean;
+	    engine_path: string;
+	    model_installed: boolean;
+	    model_path: string;
+	    is_downloading: boolean;
+	    current_step: string;
+	    progress_percent: number;
+	    bytes_downloaded: number;
+	    total_bytes: number;
+	    speed: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SetupStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.engine_installed = source["engine_installed"];
+	        this.engine_path = source["engine_path"];
+	        this.model_installed = source["model_installed"];
+	        this.model_path = source["model_path"];
+	        this.is_downloading = source["is_downloading"];
+	        this.current_step = source["current_step"];
+	        this.progress_percent = source["progress_percent"];
+	        this.bytes_downloaded = source["bytes_downloaded"];
+	        this.total_bytes = source["total_bytes"];
+	        this.speed = source["speed"];
+	        this.error = source["error"];
+	    }
+	}
+	export class Status {
+	    is_running: boolean;
+	    model_loaded: string;
+	    model_found: boolean;
+	    model_path: string;
+	    binary_found: boolean;
+	    binary_path: string;
+	    port: number;
+	    threads: number;
+	    max_threads: number;
+	    context_size: number;
+	    hardware: string;
+	    thinking_off: boolean;
+	    streaming_on: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.is_running = source["is_running"];
+	        this.model_loaded = source["model_loaded"];
+	        this.model_found = source["model_found"];
+	        this.model_path = source["model_path"];
+	        this.binary_found = source["binary_found"];
+	        this.binary_path = source["binary_path"];
+	        this.port = source["port"];
+	        this.threads = source["threads"];
+	        this.max_threads = source["max_threads"];
+	        this.context_size = source["context_size"];
+	        this.hardware = source["hardware"];
+	        this.thinking_off = source["thinking_off"];
+	        this.streaming_on = source["streaming_on"];
+	        this.error = source["error"];
 	    }
 	}
 

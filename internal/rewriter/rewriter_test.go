@@ -176,7 +176,7 @@ func TestDetectTextType(t *testing.T) {
 		{
 			name:     "empty",
 			text:     "",
-			expected: TextTypeNormal,
+			expected: TextTypeUnknown,
 		},
 	}
 
@@ -336,5 +336,20 @@ func TestAnalysisStyles(t *testing.T) {
 		if !isValidAnalysisStyle(style) {
 			t.Errorf("Analysis style '%s' is not valid", style)
 		}
+	}
+}
+
+func TestSlidersValidation(t *testing.T) {
+	r := &Rewriter{}
+	// Empty text validation
+	_, err := r.GenerateRewriteWithSliders(nil, "", 50, 50, TextTypeNormal, false)
+	if err == nil {
+		t.Error("Expected error for empty text, got nil")
+	}
+
+	// Stream empty text validation
+	_, err = r.GenerateStreamWithSliders(nil, "", 50, 50, TextTypeNormal, false)
+	if err == nil {
+		t.Error("Expected error for streaming empty text, got nil")
 	}
 }

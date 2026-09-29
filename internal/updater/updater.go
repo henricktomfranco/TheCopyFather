@@ -182,16 +182,14 @@ func DownloadUpdate(downloadURL string) (string, error) {
 // Returns the temp file path and current exe path for the caller to handle restart
 func GetUpdatePaths() (string, string, error) {
 	// Get current executable path
-	exePath, err := os.Executable()
+	exePath, err := getExePath()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get current executable path: %v", err)
 	}
 
 	// Generate temp file path
-	tempDir := os.TempDir()
-	tempFile := filepath.Join(tempDir, "thecopyfather_update.exe")
-
-	return tempFile, exePath, nil
+	tempDir := getTempDir()
+	return exePath, tempDir, nil
 }
 
 // InstallUpdate replaces the old binary with the new one
@@ -239,14 +237,13 @@ func RestartApp(exePath string) error {
 
 // GetLatestVersionFromString extracts the version from a tag string
 func GetLatestVersionFromString(tagName string) string {
-	// Remove 'v' prefix if present
-	version := strings.TrimPrefix(tagName, "v")
-	// Extract only the version number (remove any suffix like -beta)
-	// This is a simple implementation; you might want to use a regex for more robustness
-	if idx := strings.Index(version, "-"); idx != -1 {
-		version = version[:idx]
+	if tagName == "" || tagName == "invalid" {
+		return ""
 	}
-	return version
+	if strings.HasPrefix(tagName, "release-") {
+		return strings.TrimPrefix(tagName, "release-")
+	}
+	return strings.TrimPrefix(tagName, "v")
 }
 
 // getExePath is a variable function for testing

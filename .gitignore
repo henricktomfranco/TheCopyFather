@@ -5,4 +5,13 @@
 .codegraph
 frontend/node_modules
 opencode.exe
+textrewriter.exe
+
+# Model and Engine binaries (large downloads)
+engine/*.exe
+engine/*.dll
+engine/*.zip
+models/*.gguf
+models/*.bin
+
 

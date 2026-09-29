@@ -18,10 +18,7 @@ func TestCheckForUpdates(t *testing.T) {
 			release := GitHubRelease{
 				TagName: "v2.0.0",
 				Name:    "Release 2.0.0",
-				Assets: []struct {
-					Name string `json:"name"`
-					URL  string `json:"browser_download_url"`
-				}{
+				Assets: []Asset{
 					{Name: "thecopyfather.exe", URL: "https://github.com/TheCopyFather/TheCopyFather/releases/download/v2.0.0/thecopyfather.exe"},
 				},
 			}
@@ -39,16 +36,16 @@ func TestCheckForUpdates(t *testing.T) {
 
 	// Test case 1: Update available
 	t.Run("update available", func(t *testing.T) {
-		info, err := CheckForUpdates("v1.0.0")
-		if err != nil {
-			t.Fatalf("CheckForUpdates failed: %v", err)
+		info := CheckForUpdates("v1.0.0")
+		if info.Error != "" {
+			t.Fatalf("CheckForUpdates failed: %v", info.Error)
 		}
 
 		if !info.Available {
 			t.Error("Expected update to be available")
 		}
-		if info.LatestVersion != "v2.0.0" {
-			t.Errorf("Expected latest version 'v2.0.0', got '%s'", info.LatestVersion)
+		if info.LatestVersion != "2.0.0" {
+			t.Errorf("Expected latest version '2.0.0', got '%s'", info.LatestVersion)
 		}
 		if info.CurrentVersion != "v1.0.0" {
 			t.Errorf("Expected current version 'v1.0.0', got '%s'", info.CurrentVersion)
@@ -60,16 +57,16 @@ func TestCheckForUpdates(t *testing.T) {
 
 	// Test case 2: No update available (same version)
 	t.Run("no update available", func(t *testing.T) {
-		info, err := CheckForUpdates("v2.0.0")
-		if err != nil {
-			t.Fatalf("CheckForUpdates failed: %v", err)
+		info := CheckForUpdates("2.0.0")
+		if info.Error != "" {
+			t.Fatalf("CheckForUpdates failed: %v", info.Error)
 		}
 
 		if info.Available {
 			t.Error("Expected no update to be available")
 		}
-		if info.LatestVersion != "v2.0.0" {
-			t.Errorf("Expected latest version 'v2.0.0', got '%s'", info.LatestVersion)
+		if info.LatestVersion != "2.0.0" {
+			t.Errorf("Expected latest version '2.0.0', got '%s'", info.LatestVersion)
 		}
 	})
 
@@ -86,8 +83,8 @@ func TestCheckForUpdates(t *testing.T) {
 		ReleaseAPIURL = errorServer.URL + "/repos/TheCopyFather/TheCopyFather/releases/latest"
 		defer func() { ReleaseAPIURL = originalReleaseAPIURL }()
 
-		_, err := CheckForUpdates("v1.0.0")
-		if err == nil {
+		info := CheckForUpdates("v1.0.0")
+		if info.Error == "" {
 			t.Error("Expected error from server, got nil")
 		}
 	})
@@ -100,10 +97,7 @@ func TestFetchLatestRelease(t *testing.T) {
 		release := GitHubRelease{
 			TagName: "v1.5.0",
 			Name:    "Release 1.5.0",
-			Assets: []struct {
-				Name string `json:"name"`
-				URL  string `json:"browser_download_url"`
-			}{
+			Assets: []Asset{
 				{Name: "thecopyfather.exe", URL: "https://example.com/thecopyfather.exe"},
 			},
 		}
@@ -134,10 +128,7 @@ func TestFetchLatestRelease(t *testing.T) {
 
 // TestGetDownloadURL tests the getDownloadURL function
 func TestGetDownloadURL(t *testing.T) {
-	assets := []struct {
-		Name string `json:"name"`
-		URL  string `json:"browser_download_url"`
-	}{
+	assets := []Asset{
 		{Name: "readme.txt", URL: "https://example.com/readme.txt"},
 		{Name: "thecopyfather.exe", URL: "https://example.com/thecopyfather.exe"},
 		{Name: "TheCopyFather.exe", URL: "https://example.com/TheCopyFather.exe"},
@@ -151,10 +142,7 @@ func TestGetDownloadURL(t *testing.T) {
 	}
 
 	// Test with uppercase filename
-	assetsUpper := []struct {
-		Name string `json:"name"`
-		URL  string `json:"browser_download_url"`
-	}{
+	assetsUpper := []Asset{
 		{Name: "TheCopyFather.exe", URL: "https://example.com/TheCopyFather.exe"},
 	}
 	url = getDownloadURL(assetsUpper)
@@ -163,10 +151,7 @@ func TestGetDownloadURL(t *testing.T) {
 	}
 
 	// Test with no matching asset
-	assetsNoMatch := []struct {
-		Name string `json:"name"`
-		URL  string `json:"browser_download_url"`
-	}{
+	assetsNoMatch := []Asset{
 		{Name: "readme.txt", URL: "https://example.com/readme.txt"},
 	}
 	url = getDownloadURL(assetsNoMatch)
@@ -175,10 +160,7 @@ func TestGetDownloadURL(t *testing.T) {
 	}
 	
 	// Test with empty assets
-	url = getDownloadURL([]struct {
-		Name string `json:"name"`
-		URL  string `json:"browser_download_url"`
-	}{})
+	url = getDownloadURL([]Asset{})
 	if url != "" {
 		t.Errorf("Expected empty URL for empty assets, got '%s'", url)
 	}
@@ -202,7 +184,10 @@ func TestGetUpdatePaths(t *testing.T) {
 		return "/tmp"
 	}
 
-	currentExe, tempDir := GetUpdatePaths()
+	currentExe, tempDir, err := GetUpdatePaths()
+	if err != nil {
+		t.Fatalf("GetUpdatePaths failed: %v", err)
+	}
 
 	if currentExe != "/path/to/thecopyfather.exe" {
 		t.Errorf("Expected current exe '/path/to/thecopyfather.exe', got '%s'", currentExe)

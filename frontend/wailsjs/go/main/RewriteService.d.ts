@@ -34,6 +34,8 @@ export function RetryRewrite(arg1:string,arg2:string):Promise<rewriter.RewriteOp
 
 export function RetryRewriteWithFormatting(arg1:string,arg2:string,arg3:boolean):Promise<rewriter.RewriteOption>;
 
+export function RetryRewriteWithSliders(arg1:string,arg2:number,arg3:number,arg4:string,arg5:boolean):Promise<rewriter.RewriteOption>;
+
 export function RetryRewriteWithTextType(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<rewriter.RewriteOption>;
 
 export function SetCustomPrompt(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -41,5 +43,7 @@ export function SetCustomPrompt(arg1:string,arg2:string,arg3:string):Promise<voi
 export function StreamAnalysisWithTextType(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
 
 export function StreamRewriteWithFormatting(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
+
+export function StreamRewriteWithSliders(arg1:string,arg2:string,arg3:number,arg4:number,arg5:string,arg6:boolean):Promise<void>;
 
 export function StreamRewriteWithTextType(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;

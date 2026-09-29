@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 
 	"textrewriter/internal/config"
+	"textrewriter/internal/engine"
 	"textrewriter/internal/ollama"
 	"textrewriter/internal/rewriter"
 	"textrewriter/internal/updater"
@@ -44,9 +47,94 @@ func (s *SettingsService) SaveSettings(newConfig *config.Config) error {
 	return s.app.saveSettings(newConfig)
 }
 
+func (s *SettingsService) GetEngineStatus() engine.Status {
+	if s.app.engine == nil {
+		return engine.Status{Hardware: "CPU", ModelLoaded: "Qwen3-1.7B", ThinkingOff: true, StreamingOn: true}
+	}
+	return s.app.engine.GetStatus()
+}
+
+func (s *SettingsService) StartEmbeddedEngine() error {
+	if s.app.engine == nil {
+		return fmt.Errorf("engine not initialized")
+	}
+	return s.app.engine.Start()
+}
+
+func (s *SettingsService) StopEmbeddedEngine() error {
+	if s.app.engine == nil {
+		return nil
+	}
+	return s.app.engine.Stop()
+}
+
+func (s *SettingsService) OpenEngineFolder() error {
+	path := engine.GetDefaultEngineDir()
+	_ = os.MkdirAll(path, 0755)
+	return exec.Command("explorer", path).Start()
+}
+
+func (s *SettingsService) OpenModelsFolder() error {
+	path := engine.GetDefaultModelsDir()
+	_ = os.MkdirAll(path, 0755)
+	return exec.Command("explorer", path).Start()
+}
+
+func (s *SettingsService) CheckSetupStatus() engine.SetupStatus {
+	return engine.GetDownloader().CheckSetupStatus()
+}
+
+func (s *SettingsService) StartAutoDownload() error {
+	downloader := engine.GetDownloader()
+	go func() {
+		err := downloader.DownloadAll(context.Background(), func(status engine.SetupStatus) {
+			runtime.EventsEmit(s.app.ctx, "setup:status", status)
+		})
+		if err != nil {
+			runtime.EventsEmit(s.app.ctx, "setup:error", err.Error())
+			return
+		}
+		if s.app.engine != nil {
+			_ = s.app.engine.Start()
+		}
+		runtime.EventsEmit(s.app.ctx, "setup:completed", true)
+	}()
+	return nil
+}
+
+func (s *SettingsService) CancelAutoDownload() {
+	engine.GetDownloader().Cancel()
+}
+
 func (s *SettingsService) TestConnection(serverURL, model, apiKey string, useOpenAICompatible bool) (string, error) {
+	if !useOpenAICompatible && (serverURL == "" || serverURL == "embedded") {
+		if s.app.engine == nil {
+			return "", fmt.Errorf("embedded engine not initialized")
+		}
+		status := s.app.engine.GetStatus()
+		if !status.BinaryFound {
+			return "", fmt.Errorf("%s", status.Error)
+		}
+		if !status.ModelFound {
+			return "", fmt.Errorf("%s", status.Error)
+		}
+		if !status.IsRunning {
+			if err := s.app.engine.Start(); err != nil {
+				return "", err
+			}
+			status = s.app.engine.GetStatus()
+		}
+		return fmt.Sprintf("Embedded llama.cpp (CPU) Ready - %s (Threads: %d, Context: %d)", status.ModelLoaded, status.Threads, status.ContextSize), nil
+	}
+
 	if useOpenAICompatible {
-		client := ollama.NewOpenAICompatibleClient(serverURL, model, apiKey)
+		if serverURL == "" {
+			serverURL = "https://integrate.api.nvidia.com/v1"
+		}
+		if model == "" {
+			model = "mistralai/mistral-7b-instruct"
+		}
+		client := ollama.NewOpenAICompatibleClientWithAllOptions(serverURL, model, apiKey, false, s.app.cfg.DisableThinking)
 		if err := client.HealthCheck(); err != nil {
 			return "", err
 		}
@@ -60,6 +148,9 @@ func (s *SettingsService) TestConnection(serverURL, model, apiKey string, useOpe
 }
 
 func (s *SettingsService) GetAvailableModels() ([]string, error) {
+	if s.app.cfg.ProviderMode == "embedded" {
+		return []string{"Qwen3-1.7B"}, nil
+	}
 	return s.app.ollamaClient.GetAvailableModels()
 }
 
@@ -67,32 +158,71 @@ func (s *SettingsService) GetAvailableModels() ([]string, error) {
 // REWRITE SERVICE
 // ============================================================================
 
+func (r *RewriteService) ensureEngineReady() error {
+	if r.app.cfg.ProviderMode == "embedded" || (r.app.cfg.ProviderMode == "" && !r.app.cfg.UseOpenAICompatible) {
+		if r.app.engine == nil {
+			return fmt.Errorf("embedded AI engine is not initialized")
+		}
+		status := r.app.engine.GetStatus()
+		if !status.BinaryFound {
+			return fmt.Errorf("llama-server.exe is missing. Please download it from Settings or the Welcome screen")
+		}
+		if !status.ModelFound {
+			return fmt.Errorf("AI model file (Qwen3-1.7B) is missing. Please download it from Settings or the Welcome screen")
+		}
+		if !status.IsRunning {
+			if err := r.app.engine.Start(); err != nil {
+				return fmt.Errorf("failed to start embedded AI engine: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 func (r *RewriteService) RetryRewrite(text, style string) rewriter.RewriteOption {
+	if err := r.ensureEngineReady(); err != nil {
+		return rewriter.RewriteOption{Error: err.Error()}
+	}
 	option, _ := r.app.rewriter.GenerateSingleRewrite(r.app.ctx, text, style)
 	return option
 }
 
 func (r *RewriteService) RetryAnalysis(text, style string) rewriter.RewriteOption {
+	if err := r.ensureEngineReady(); err != nil {
+		return rewriter.RewriteOption{Error: err.Error()}
+	}
 	option, _ := r.app.rewriter.GenerateSingleAnalysis(r.app.ctx, text, style)
 	return option
 }
 
 func (r *RewriteService) RetryRewriteWithFormatting(text, style string, enableFormatting bool) rewriter.RewriteOption {
+	if err := r.ensureEngineReady(); err != nil {
+		return rewriter.RewriteOption{Error: err.Error()}
+	}
 	option, _ := r.app.rewriter.GenerateSingleRewriteWithFormatting(r.app.ctx, text, style, enableFormatting)
 	return option
 }
 
 func (r *RewriteService) RetryAnalysisWithFormatting(text, style string, enableFormatting bool) rewriter.RewriteOption {
+	if err := r.ensureEngineReady(); err != nil {
+		return rewriter.RewriteOption{Error: err.Error()}
+	}
 	option, _ := r.app.rewriter.GenerateSingleAnalysisWithFormatting(r.app.ctx, text, style, enableFormatting)
 	return option
 }
 
 func (r *RewriteService) RetryRewriteWithTextType(text, style, textType string, enableFormatting bool) rewriter.RewriteOption {
+	if err := r.ensureEngineReady(); err != nil {
+		return rewriter.RewriteOption{Error: err.Error()}
+	}
 	option, _ := r.app.rewriter.GenerateRewriteWithTextType(r.app.ctx, text, style, rewriter.TextType(textType), enableFormatting)
 	return option
 }
 
 func (r *RewriteService) RetryAnalysisWithTextType(text, style, textType string, enableFormatting bool) rewriter.RewriteOption {
+	if err := r.ensureEngineReady(); err != nil {
+		return rewriter.RewriteOption{Error: err.Error()}
+	}
 	option, _ := r.app.rewriter.GenerateAnalysisWithTextType(r.app.ctx, text, style, rewriter.TextType(textType), enableFormatting)
 	return option
 }
@@ -104,6 +234,11 @@ func (r *RewriteService) StreamRewriteWithFormatting(requestID, text, style stri
 		streamCtx, cancel := context.WithCancel(r.app.ctx)
 		r.app.setStreamCancel(requestID, cancel)
 		defer cancel()
+
+		if err := r.ensureEngineReady(); err != nil {
+			runtime.EventsEmit(r.app.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
 
 		streamChan, err := r.app.rewriter.GenerateStreamWithFormatting(streamCtx, text, style, enableFormatting)
 		if err != nil {
@@ -122,6 +257,11 @@ func (r *RewriteService) StreamRewriteWithTextType(requestID, text, style, textT
 		r.app.setStreamCancel(requestID, cancel)
 		defer cancel()
 
+		if err := r.ensureEngineReady(); err != nil {
+			runtime.EventsEmit(r.app.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
+
 		streamChan, err := r.app.rewriter.GenerateStreamWithTextType(streamCtx, text, style, rewriter.TextType(textType), enableFormatting)
 		if err != nil {
 			runtime.EventsEmit(r.app.ctx, "stream:error:"+requestID, err.Error())
@@ -139,7 +279,42 @@ func (r *RewriteService) StreamAnalysisWithTextType(requestID, text, style, text
 		r.app.setStreamCancel(requestID, cancel)
 		defer cancel()
 
+		if err := r.ensureEngineReady(); err != nil {
+			runtime.EventsEmit(r.app.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
+
 		streamChan, err := r.app.rewriter.GenerateStreamAnalysisWithTextType(streamCtx, text, style, rewriter.TextType(textType), enableFormatting)
+		if err != nil {
+			runtime.EventsEmit(r.app.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
+		r.app.streamChunksWithRateLimit(requestID, streamChan)
+	}()
+}
+
+func (r *RewriteService) RetryRewriteWithSliders(text string, formality, length int, textType string, enableFormatting bool) rewriter.RewriteOption {
+	if err := r.ensureEngineReady(); err != nil {
+		return rewriter.RewriteOption{Error: err.Error()}
+	}
+	option, _ := r.app.rewriter.GenerateRewriteWithSliders(r.app.ctx, text, formality, length, rewriter.TextType(textType), enableFormatting)
+	return option
+}
+
+func (r *RewriteService) StreamRewriteWithSliders(requestID, text string, formality, length int, textType string, enableFormatting bool) {
+	r.app.registerStream(requestID)
+	go func() {
+		defer r.app.unregisterStream(requestID)
+		streamCtx, cancel := context.WithCancel(r.app.ctx)
+		r.app.setStreamCancel(requestID, cancel)
+		defer cancel()
+
+		if err := r.ensureEngineReady(); err != nil {
+			runtime.EventsEmit(r.app.ctx, "stream:error:"+requestID, err.Error())
+			return
+		}
+
+		streamChan, err := r.app.rewriter.GenerateStreamWithSliders(streamCtx, text, formality, length, rewriter.TextType(textType), enableFormatting)
 		if err != nil {
 			runtime.EventsEmit(r.app.ctx, "stream:error:"+requestID, err.Error())
 			return

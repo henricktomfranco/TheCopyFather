@@ -15,7 +15,7 @@ interface StyleSelectorProps {
   setDropdownOpen: (open: boolean) => void
   textTypeDropdownOpen: boolean
   setTextTypeDropdownOpen: (open: boolean) => void
-  mainMode: 'rewrite' | 'analyze'
+  mainMode: 'rewrite' | 'sliders' | 'analyze'
   rewriteStyle: string
   analysisStyle: string
   REWRITE_STYLES: StyleData[]

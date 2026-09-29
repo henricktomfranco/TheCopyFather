@@ -1,6 +1,6 @@
 interface ResultRendererProps {
   result: string
-  mainMode: 'rewrite' | 'analyze'
+  mainMode: 'rewrite' | 'sliders' | 'analyze'
   analysisStyle: string
   selectedTextType: string
 }

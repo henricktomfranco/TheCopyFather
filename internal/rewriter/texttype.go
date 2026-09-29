@@ -133,6 +133,11 @@ func DetectTextType(text string) (TextType, float64) {
 		{"ty", 0.5},
 		{"tysm", 1.0},
 		{"rn", 0.5},
+		{"hey", 1.5},
+		{"yo ", 1.0},
+		{"sup", 1.0},
+		{"how's it going", 1.5},
+		{"what's up", 1.5},
 	}
 
 	for _, p := range chatPatterns {
@@ -157,7 +162,7 @@ func DetectTextType(text string) (TextType, float64) {
 		}
 	}
 
-	if len(lines) > 0 {
+	if len(lines) > 1 {
 		shortLineRatio := float64(shortLineCount) / float64(len(lines))
 		if shortLineRatio > 0.5 {
 			score[TextTypeChat] += 2.0

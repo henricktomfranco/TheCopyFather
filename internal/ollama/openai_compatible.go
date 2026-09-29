@@ -10,15 +10,18 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"textrewriter/internal/guardrails"
 )
 
-// OpenAICompatibleClient handles communication with OpenAI-compatible APIs (e.g., NVIDIA NIM, LM Studio)
+// OpenAICompatibleClient handles communication with OpenAI-compatible APIs (e.g., NVIDIA NIM, LM Studio, embedded llama.cpp)
 type OpenAICompatibleClient struct {
 	baseURL          string
 	model            string
 	apiKey           string
 	httpClient       *http.Client
 	disableStreaming bool
+	disableThinking  bool
 }
 
 // NewOpenAICompatibleClient creates a new OpenAI-compatible API client
@@ -28,6 +31,11 @@ func NewOpenAICompatibleClient(baseURL, model, apiKey string) *OpenAICompatibleC
 
 // NewOpenAICompatibleClientWithOptions creates a new OpenAI-compatible API client with additional options
 func NewOpenAICompatibleClientWithOptions(baseURL, model, apiKey string, disableStreaming bool) *OpenAICompatibleClient {
+	return NewOpenAICompatibleClientWithAllOptions(baseURL, model, apiKey, disableStreaming, false)
+}
+
+// NewOpenAICompatibleClientWithAllOptions creates a new OpenAI-compatible API client with all options
+func NewOpenAICompatibleClientWithAllOptions(baseURL, model, apiKey string, disableStreaming, disableThinking bool) *OpenAICompatibleClient {
 	if baseURL == "" {
 		baseURL = "https://integrate.api.nvidia.com/v1"
 	}
@@ -38,16 +46,27 @@ func NewOpenAICompatibleClientWithOptions(baseURL, model, apiKey string, disable
 		apiKey:           apiKey,
 		httpClient:       &http.Client{Timeout: 120 * time.Second},
 		disableStreaming: disableStreaming,
+		disableThinking:  disableThinking,
 	}
+}
+
+// SetDisableThinking configures whether reasoning/thinking tags are stripped
+func (c *OpenAICompatibleClient) SetDisableThinking(disable bool) {
+	c.disableThinking = disable
 }
 
 // OpenAIRequest represents the request body for OpenAI-compatible APIs
 type OpenAIRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model            string    `json:"model"`
+	Messages         []Message `json:"messages"`
+	Temperature      float64   `json:"temperature,omitempty"`
+	TopP             float64   `json:"top_p,omitempty"`
+	MaxTokens        int       `json:"max_tokens,omitempty"`
+	FrequencyPenalty float64   `json:"frequency_penalty,omitempty"`
+	PresencePenalty  float64   `json:"presence_penalty,omitempty"`
+	RepeatPenalty    float64   `json:"repeat_penalty,omitempty"`
+	Stop             []string  `json:"stop,omitempty"`
+	Stream           bool      `json:"stream,omitempty"`
 }
 
 // Message represents a chat message
@@ -101,11 +120,16 @@ func (c *OpenAICompatibleClient) GenerateRewrite(ctx context.Context, text, styl
 	// Sanitize the input text
 	sanitizedText := sanitizeInput(text)
 
+	finalSystemPrompt := systemPrompt
+	if c.disableThinking {
+		finalSystemPrompt += "\n\nCRITICAL: Do not output reasoning, thoughts, internal explanations, or <think> tags. Provide ONLY the final rewritten text directly."
+	}
+
 	// Build messages for OpenAI-compatible API
 	messages := []Message{
 		{
 			Role:    "system",
-			Content: systemPrompt,
+			Content: finalSystemPrompt,
 		},
 		{
 			Role:    "user",
@@ -114,11 +138,16 @@ func (c *OpenAICompatibleClient) GenerateRewrite(ctx context.Context, text, styl
 	}
 
 	reqBody := OpenAIRequest{
-		Model:       c.model,
-		Messages:    messages,
-		Temperature: 0.7,
-		MaxTokens:   4096,
-		Stream:      false,
+		Model:            c.model,
+		Messages:         messages,
+		Temperature:      guardrails.GetTemperatureForStyle(style),
+		TopP:             guardrails.DefaultTopP,
+		MaxTokens:        guardrails.CalculateMaxTokens(text, style),
+		FrequencyPenalty: guardrails.DefaultFrequencyPenalty,
+		PresencePenalty:  guardrails.DefaultPresencePenalty,
+		RepeatPenalty:    guardrails.DefaultRepeatPenalty,
+		Stop:             guardrails.GetDefaultStopSequences(),
+		Stream:           false,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -140,7 +169,7 @@ func (c *OpenAICompatibleClient) GenerateRewrite(ctx context.Context, text, styl
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return fmt.Errorf("failed to connect to API: %w", err)
+			return formatOpenAIConnectionError(err, c.baseURL)
 		}
 		defer resp.Body.Close()
 
@@ -166,6 +195,16 @@ func (c *OpenAICompatibleClient) GenerateRewrite(ctx context.Context, text, styl
 	}
 
 	content := strings.TrimSpace(result.Choices[0].Message.Content)
+	if c.disableThinking {
+		content = stripThinking(content)
+	}
+
+	// Guardrail: Detect and clean any repetition loops
+	repResult := guardrails.DetectAndCleanRepetition(content)
+	if repResult.HasLoop {
+		content = repResult.CleanText
+	}
+
 	if content == "" {
 		return "", fmt.Errorf("empty response from API")
 	}
@@ -182,11 +221,16 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 	// Sanitize the input text
 	sanitizedText := sanitizeInput(text)
 
+	finalSystemPrompt := systemPrompt
+	if c.disableThinking {
+		finalSystemPrompt += "\n\nCRITICAL: Do not output reasoning, thoughts, internal explanations, or <think> tags. Provide ONLY the final rewritten text directly."
+	}
+
 	// Build messages for OpenAI-compatible API
 	messages := []Message{
 		{
 			Role:    "system",
-			Content: systemPrompt,
+			Content: finalSystemPrompt,
 		},
 		{
 			Role:    "user",
@@ -195,11 +239,16 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 	}
 
 	reqBody := OpenAIRequest{
-		Model:       c.model,
-		Messages:    messages,
-		Temperature: 0.7,
-		MaxTokens:   4096,
-		Stream:      true,
+		Model:            c.model,
+		Messages:         messages,
+		Temperature:      guardrails.GetTemperatureForStyle(style),
+		TopP:             guardrails.DefaultTopP,
+		MaxTokens:        guardrails.CalculateMaxTokens(text, style),
+		FrequencyPenalty: guardrails.DefaultFrequencyPenalty,
+		PresencePenalty:  guardrails.DefaultPresencePenalty,
+		RepeatPenalty:    guardrails.DefaultRepeatPenalty,
+		Stop:             guardrails.GetDefaultStopSequences(),
+		Stream:           true,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -238,7 +287,11 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 
 			resp, err := c.httpClient.Do(req)
 			if err != nil {
-				lastErr = fmt.Errorf("failed to connect to API: %w", err)
+				lastErr = formatOpenAIConnectionError(err, c.baseURL)
+				if isLocalConnectionRefused(err, c.baseURL) {
+					outputChan <- ClientStreamResponse{Error: lastErr}
+					return
+				}
 				continue
 			}
 			defer resp.Body.Close()
@@ -257,6 +310,10 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 
 			// Process SSE streaming response (OpenAI format: "data: {...}\n\n")
 			scanner := bufio.NewScanner(resp.Body)
+			inThinking := false
+			thinkBuffer := ""
+			var accumulatedText strings.Builder
+
 			for scanner.Scan() {
 				line := scanner.Text()
 				if line == "" {
@@ -279,9 +336,49 @@ func (c *OpenAICompatibleClient) GenerateStream(ctx context.Context, text, style
 				if len(chunk.Choices) > 0 {
 					content := chunk.Choices[0].Delta.Content
 					if content != "" {
-						outputChan <- ClientStreamResponse{
-							Response: content,
-							Done:     chunk.Choices[0].FinishReason != "",
+						if c.disableThinking {
+							if inThinking {
+								thinkBuffer += content
+								if endIdx := strings.Index(strings.ToLower(thinkBuffer), "</think>"); endIdx != -1 {
+									content = thinkBuffer[endIdx+8:]
+									inThinking = false
+									thinkBuffer = ""
+								} else {
+									content = ""
+								}
+							} else {
+								if startIdx := strings.Index(strings.ToLower(content), "<think>"); startIdx != -1 {
+									before := content[:startIdx]
+									thinkBuffer = content[startIdx:]
+									inThinking = true
+									if endIdx := strings.Index(strings.ToLower(thinkBuffer), "</think>"); endIdx != -1 {
+										content = before + thinkBuffer[endIdx+8:]
+										inThinking = false
+										thinkBuffer = ""
+									} else {
+										content = before
+									}
+								}
+							}
+						}
+
+						if content != "" {
+							accumulatedText.WriteString(content)
+
+							// Guardrail: Active loop detection during streaming
+							repCheck := guardrails.DetectAndCleanRepetition(accumulatedText.String())
+							if repCheck.HasLoop {
+								// Repetition loop detected! Terminate stream immediately.
+								outputChan <- ClientStreamResponse{
+									Done: true,
+								}
+								return
+							}
+
+							outputChan <- ClientStreamResponse{
+								Response: content,
+								Done:     chunk.Choices[0].FinishReason != "",
+							}
 						}
 					}
 				}
@@ -400,8 +497,28 @@ func (c *OpenAICompatibleClient) generateNonStreaming(ctx context.Context, text,
 	return outputChan, nil
 }
 
+func isLocalConnectionRefused(err error, baseURL string) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	isLocal := strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") || strings.Contains(baseURL, "8085")
+	isRefused := strings.Contains(errStr, "connectex") || strings.Contains(errStr, "actively refused") || strings.Contains(errStr, "connection refused")
+	return isLocal && isRefused
+}
+
+func formatOpenAIConnectionError(err error, baseURL string) error {
+	if isLocalConnectionRefused(err, baseURL) {
+		return fmt.Errorf("embedded llama.cpp engine is not running (port 8085 refused connection). Please download the model via the Welcome screen or check Settings")
+	}
+	return fmt.Errorf("failed to connect to API at %s: %w", baseURL, err)
+}
+
 func formatOpenAIError(statusCode int, errStr, model, baseURL string, connErr error) error {
 	if connErr != nil {
+		if isLocalConnectionRefused(connErr, baseURL) {
+			return fmt.Errorf("embedded llama.cpp engine is not running (port 8085 refused connection). Please download the model via the Welcome screen or check Settings")
+		}
 		return fmt.Errorf("cannot connect to API at %s. Please check your internet connection or server URL", baseURL)
 	}
 	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
@@ -414,4 +531,22 @@ func formatOpenAIError(statusCode int, errStr, model, baseURL string, connErr er
 		return fmt.Errorf("rate limit exceeded (429). Please wait a moment before retrying")
 	}
 	return fmt.Errorf("API error (status %d): %s", statusCode, errStr)
+}
+
+// stripThinking removes reasoning or <think>...</think> blocks from text
+func stripThinking(text string) string {
+	for {
+		start := strings.Index(strings.ToLower(text), "<think>")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(strings.ToLower(text), "</think>")
+		if end != -1 {
+			text = text[:start] + text[end+8:]
+		} else {
+			text = text[:start]
+			break
+		}
+	}
+	return strings.TrimSpace(text)
 }

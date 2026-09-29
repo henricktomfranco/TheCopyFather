@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"textrewriter/internal/guardrails"
 )
 
 // AIClient is an interface for AI providers (Ollama, OpenAI-compatible)
@@ -104,8 +106,8 @@ func retryWithBackoff(ctx context.Context, operation func() error) error {
 		}
 
 		lastErr = err
-		// Don't retry on client errors (4xx)
-		if strings.Contains(err.Error(), "status 4") {
+		// Don't retry on client errors (4xx) or when embedded engine is not running
+		if strings.Contains(err.Error(), "status 4") || strings.Contains(err.Error(), "embedded llama.cpp engine is not running") {
 			return err
 		}
 	}
@@ -126,7 +128,7 @@ func (c *Client) GenerateRewrite(ctx context.Context, text, style, systemPrompt 
 	// The system prompt handles text type detection and rewriting instructions
 	prompt := fmt.Sprintf("<input>\n%s\n</input>", sanitizedText)
 
-	reqBody := c.buildGenerateRequest(prompt, systemPrompt)
+	reqBody := c.buildGenerateRequest(prompt, style, systemPrompt)
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
@@ -167,7 +169,13 @@ func (c *Client) GenerateRewrite(ctx context.Context, text, style, systemPrompt 
 		return "", err
 	}
 
-	return result.Response, nil
+	content := strings.TrimSpace(result.Response)
+	repResult := guardrails.DetectAndCleanRepetition(content)
+	if repResult.HasLoop {
+		content = repResult.CleanText
+	}
+
+	return content, nil
 }
 
 // ClientStreamResponse represents a single chunk from a streaming response
@@ -196,7 +204,7 @@ func (c *Client) GenerateStream(ctx context.Context, text, style, systemPrompt s
 	prompt := fmt.Sprintf("<input>\n%s\n</input>", sanitizedText)
 
 	// Build request with streaming enabled
-	reqBody := c.buildGenerateRequest(prompt, systemPrompt)
+	reqBody := c.buildGenerateRequest(prompt, style, systemPrompt)
 	reqBody.Stream = true
 
 	jsonData, err := json.Marshal(reqBody)
@@ -258,6 +266,7 @@ func (c *Client) GenerateStream(ctx context.Context, text, style, systemPrompt s
 
 			// Process streaming response
 			decoder := json.NewDecoder(resp.Body)
+			var accumulatedText strings.Builder
 			for {
 				select {
 				case <-ctx.Done():
@@ -271,6 +280,18 @@ func (c *Client) GenerateStream(ctx context.Context, text, style, systemPrompt s
 						}
 						outputChan <- ClientStreamResponse{Error: fmt.Errorf("failed to decode stream chunk: %w", err)}
 						return
+					}
+
+					if chunk.Response != "" {
+						accumulatedText.WriteString(chunk.Response)
+						repResult := guardrails.DetectAndCleanRepetition(accumulatedText.String())
+						if repResult.HasLoop {
+							// Repetition loop detected! Stop streaming immediately.
+							outputChan <- ClientStreamResponse{
+								Done: true,
+							}
+							return
+						}
 					}
 
 					outputChan <- ClientStreamResponse{
@@ -294,7 +315,7 @@ func (c *Client) GenerateStream(ctx context.Context, text, style, systemPrompt s
 	return outputChan, nil
 }
 
-func (c *Client) buildGenerateRequest(prompt, systemPrompt string) GenerateRequest {
+func (c *Client) buildGenerateRequest(prompt, style, systemPrompt string) GenerateRequest {
 	actualSystemPrompt := systemPrompt
 	actualPrompt := prompt
 
@@ -310,10 +331,15 @@ func (c *Client) buildGenerateRequest(prompt, systemPrompt string) GenerateReque
 		System: actualSystemPrompt,
 		Stream: false,
 		Options: map[string]interface{}{
-			"temperature": 0.7,
-			"top_p":       0.9,
-			"num_predict": 1024,
-			"num_ctx":     4096,
+			"temperature":       guardrails.GetTemperatureForStyle(style),
+			"top_p":             guardrails.DefaultTopP,
+			"repeat_penalty":    guardrails.DefaultRepeatPenalty,
+			"repeat_last_n":     guardrails.DefaultRepeatLastN,
+			"frequency_penalty": guardrails.DefaultFrequencyPenalty,
+			"presence_penalty":  guardrails.DefaultPresencePenalty,
+			"stop":              guardrails.GetDefaultStopSequences(),
+			"num_predict":       guardrails.CalculateMaxTokens(prompt, style),
+			"num_ctx":           4096,
 		},
 	}
 }

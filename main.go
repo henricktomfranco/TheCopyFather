@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"textrewriter/internal/config"
+	"textrewriter/internal/engine"
 	"textrewriter/internal/ollama"
 	"textrewriter/internal/rewriter"
 	"textrewriter/internal/updater"
@@ -45,6 +46,7 @@ type App struct {
 	cfg               *config.Config
 	ollamaClient      ollama.AIClient
 	rewriter          *rewriter.Rewriter
+	engine            *engine.Engine
 	hotkeyManager     *win.HotkeyManager
 	ghostHotkeyManager *win.HotkeyManager
 	trayManager       *win.TrayManager
@@ -73,6 +75,28 @@ func (a *App) startup(ctx context.Context) {
 
 	if a.cfg.AutoUpdateEnabled {
 		go a.checkForUpdates()
+	}
+
+	// Initialize embedded engine
+	a.engine = engine.New(engine.Config{
+		BinaryPath:      a.cfg.EmbeddedBinaryPath,
+		ModelPath:       a.cfg.EmbeddedModelPath,
+		ContextSize:     a.cfg.EmbeddedContextSize,
+		CPUThreads:      a.cfg.EmbeddedCPUThreads,
+		MaxCPUThreads:   a.cfg.EmbeddedMaxThreads,
+		DisableThinking: a.cfg.DisableThinking,
+		Streaming:       !a.cfg.DisableStreaming,
+	})
+
+	if a.cfg.ProviderMode == "embedded" || (a.cfg.ProviderMode == "" && !a.cfg.UseOpenAICompatible) {
+		go func() {
+			status := a.engine.GetStatus()
+			if status.BinaryFound && status.ModelFound {
+				if err := a.engine.Start(); err != nil {
+					runtime.LogWarning(a.ctx, fmt.Sprintf("Embedded engine start: %v", err))
+				}
+			}
+		}()
 	}
 
 	a.createClients()
@@ -121,6 +145,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	if a.trayManager != nil {
 		a.trayManager.Stop()
+	}
+	if a.engine != nil {
+		a.engine.Stop()
 	}
 	if a.cfg != nil {
 		a.cfg.Save()
@@ -176,11 +203,65 @@ func (a *App) Quit() {
 // ============================================================================
 
 func (a *App) createClients() {
-	if a.cfg.UseOpenAICompatible {
-		client := ollama.NewOpenAICompatibleClientWithOptions(a.cfg.OpenAIBaseURL, a.cfg.OpenAIModel, a.cfg.OpenAIAPIKey, a.cfg.DisableStreaming)
+	if a.engine == nil {
+		a.engine = engine.New(engine.Config{
+			BinaryPath:      a.cfg.EmbeddedBinaryPath,
+			ModelPath:       a.cfg.EmbeddedModelPath,
+			ContextSize:     a.cfg.EmbeddedContextSize,
+			CPUThreads:      a.cfg.EmbeddedCPUThreads,
+			MaxCPUThreads:   a.cfg.EmbeddedMaxThreads,
+			DisableThinking: a.cfg.DisableThinking,
+			Streaming:       !a.cfg.DisableStreaming,
+		})
+	} else {
+		a.engine.UpdateConfig(engine.Config{
+			BinaryPath:      a.cfg.EmbeddedBinaryPath,
+			ModelPath:       a.cfg.EmbeddedModelPath,
+			ContextSize:     a.cfg.EmbeddedContextSize,
+			CPUThreads:      a.cfg.EmbeddedCPUThreads,
+			MaxCPUThreads:   a.cfg.EmbeddedMaxThreads,
+			DisableThinking: a.cfg.DisableThinking,
+			Streaming:       !a.cfg.DisableStreaming,
+		})
+	}
+
+	mode := a.cfg.ProviderMode
+	if mode == "" {
+		if a.cfg.UseOpenAICompatible {
+			mode = "openai"
+		} else {
+			mode = "embedded"
+		}
+	}
+
+	switch mode {
+	case "embedded":
+		modelName := a.cfg.EmbeddedModel
+		if modelName == "" {
+			modelName = "Qwen3-1.7B"
+		}
+		client := ollama.NewOpenAICompatibleClientWithAllOptions(
+			a.engine.GetBaseURL(),
+			modelName,
+			"",
+			a.cfg.DisableStreaming,
+			a.cfg.DisableThinking,
+		)
 		a.ollamaClient = client
 		a.rewriter = rewriter.New(client, a.cfg)
-	} else {
+
+	case "openai":
+		client := ollama.NewOpenAICompatibleClientWithAllOptions(
+			a.cfg.OpenAIBaseURL,
+			a.cfg.OpenAIModel,
+			a.cfg.OpenAIAPIKey,
+			a.cfg.DisableStreaming,
+			a.cfg.DisableThinking,
+		)
+		a.ollamaClient = client
+		a.rewriter = rewriter.New(client, a.cfg)
+
+	default: // "ollama"
 		client := ollama.NewClientWithOptions(a.cfg.ServerURL, a.cfg.Model, a.cfg.APIKey, a.cfg.DisableStreaming)
 		a.ollamaClient = client
 		a.rewriter = rewriter.New(client, a.cfg)
@@ -189,6 +270,22 @@ func (a *App) createClients() {
 
 func (a *App) saveSettings(newConfig *config.Config) error {
 	a.cfg = newConfig
+	if a.cfg.ProviderMode == "" {
+		if a.cfg.UseOpenAICompatible {
+			a.cfg.ProviderMode = "openai"
+		} else {
+			a.cfg.ProviderMode = "embedded"
+		}
+	}
+	if a.cfg.ProviderMode == "openai" {
+		a.cfg.UseOpenAICompatible = true
+		if a.engine != nil && a.engine.GetStatus().IsRunning {
+			_ = a.engine.Stop()
+		}
+	} else if a.cfg.ProviderMode == "embedded" {
+		a.cfg.UseOpenAICompatible = false
+	}
+
 	if err := a.cfg.Save(); err != nil {
 		return err
 	}
@@ -385,6 +482,18 @@ func (a *App) onGhostHotkeyTriggered() {
 	// Delete the original text by typing a backspace or just start typing which overwrites highlighted text
 	// Wait, since the text is highlighted (from copy), any keystroke we send will replace it.
 	
+	// Ensure engine is running if in embedded mode
+	if a.cfg.ProviderMode == "embedded" || (a.cfg.ProviderMode == "" && !a.cfg.UseOpenAICompatible) {
+		if a.engine != nil && !a.engine.IsRunning() {
+			status := a.engine.GetStatus()
+			if !status.BinaryFound || !status.ModelFound {
+				runtime.LogError(a.ctx, "Cannot start Ghost Typer: AI engine or model not downloaded yet")
+				return
+			}
+			_ = a.engine.Start()
+		}
+	}
+
 	// Start streaming
 	textTypeInfo := rewriter.TextType(a.cfg.GhostTextType)
 	streamChan, err := a.rewriter.GenerateStreamWithTextType(a.ctx, text, a.cfg.GhostStyle, textTypeInfo, false)
@@ -557,9 +666,11 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:  "The Copyfather",
-		Width:  500,
-		Height: 700,
+		Title:     "The Copyfather",
+		Width:     500,
+		Height:    700,
+		MinWidth:  360,
+		MinHeight: 440,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

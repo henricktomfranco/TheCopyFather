@@ -15,64 +15,86 @@ export type View = 'popup' | 'settings' | 'welcome' | 'mini' | 'diff'
 
 // Config type for app state (all fields optional to allow partial updates)
 export interface Config {
-// From configModels.Config
-server_url?: string;
-model?: string;
-api_key?: string;
-default_style?: string;
-auto_start?: boolean;
-hotkey?: string;
-monitor_clipboard?: boolean;
-first_run?: boolean;
-custom_prompts?: Record<string, any>;
-auto_paste_mode?: string;
-popup_position_mode?: string;
-mini_mode?: boolean;
-auto_minimize_on_copy?: boolean;
-// Ghost mode settings
-ghost_hotkey?: string;
-ghost_style?: string;
-ghost_text_type?: string;
-// Auto-update settings
-autoUpdateEnabled?: boolean;
-currentVersion?: string;
-updateChannel?: string;
-// OpenAI-compatible settings
-useOpenAICompatible?: boolean;
-openAIBaseURL?: string;
-openAIModel?: string;
-openAIAPIKey?: string;
-// Streaming settings
-disableStreaming?: boolean;
+  // Provider mode: "embedded" | "openai"
+  provider_mode?: string;
+  // Embedded llama.cpp settings
+  embedded_model?: string;
+  embedded_model_path?: string;
+  embedded_binary_path?: string;
+  embedded_hardware?: string;
+  embedded_cpu_threads?: number;
+  embedded_max_threads?: number;
+  embedded_context_size?: number;
+  disable_thinking?: boolean;
+  // From configModels.Config
+  server_url?: string;
+  model?: string;
+  api_key?: string;
+  default_style?: string;
+  auto_start?: boolean;
+  hotkey?: string;
+  monitor_clipboard?: boolean;
+  first_run?: boolean;
+  custom_prompts?: Record<string, any>;
+  auto_paste_mode?: string;
+  popup_position_mode?: string;
+  mini_mode?: boolean;
+  auto_minimize_on_copy?: boolean;
+  // Ghost mode settings
+  ghost_hotkey?: string;
+  ghost_style?: string;
+  ghost_text_type?: string;
+  // Auto-update settings
+  autoUpdateEnabled?: boolean;
+  currentVersion?: string;
+  updateChannel?: string;
+  // OpenAI-compatible settings
+  useOpenAICompatible?: boolean;
+  openAIBaseURL?: string;
+  openAIModel?: string;
+  openAIAPIKey?: string;
+  // Streaming settings
+  disableStreaming?: boolean;
 }
 
 // Helper to convert partial Config to full Config
 const toFullConfig = (config: Config): configModels.Config => {
-return {
-autoUpdateEnabled: config.autoUpdateEnabled ?? false,
-currentVersion: config.currentVersion ?? '',
-updateChannel: config.updateChannel ?? '',
-useOpenAICompatible: config.useOpenAICompatible ?? false,
-openAIBaseURL: config.openAIBaseURL ?? '',
-openAIModel: config.openAIModel ?? '',
-openAIAPIKey: config.openAIAPIKey ?? '',
-server_url: config.server_url ?? '',
-model: config.model ?? '',
-		api_key: config.api_key,
-		disableStreaming: config.disableStreaming ?? false,
-		default_style: config.default_style ?? '',
-auto_start: config.auto_start ?? false,
-hotkey: config.hotkey ?? '',
-monitor_clipboard: config.monitor_clipboard ?? false,
-first_run: config.first_run ?? false,
-auto_paste_mode: config.auto_paste_mode ?? '',
-popup_position_mode: config.popup_position_mode ?? '',
-mini_mode: config.mini_mode ?? false,
-auto_minimize_on_copy: config.auto_minimize_on_copy ?? false,
-ghost_hotkey: config.ghost_hotkey ?? '',
-ghost_style: config.ghost_style ?? '',
-ghost_text_type: config.ghost_text_type ?? '',
-};
+  const mode = config.provider_mode || (config.useOpenAICompatible ? 'openai' : 'embedded');
+  const isOpenAI = mode === 'openai' || !!config.useOpenAICompatible;
+  return {
+    provider_mode: mode,
+    embedded_model: config.embedded_model ?? 'SmolLM2-360M',
+    embedded_model_path: config.embedded_model_path ?? 'models/smollm2-360m-instruct-q4_k_m.gguf',
+    embedded_binary_path: config.embedded_binary_path ?? 'engine/llama-server.exe',
+    embedded_hardware: config.embedded_hardware ?? 'cpu',
+    embedded_cpu_threads: config.embedded_cpu_threads ?? 0,
+    embedded_max_threads: config.embedded_max_threads ?? 6,
+    embedded_context_size: config.embedded_context_size ?? 2048,
+    disable_thinking: config.disable_thinking ?? true,
+    autoUpdateEnabled: config.autoUpdateEnabled ?? false,
+    currentVersion: config.currentVersion ?? '',
+    updateChannel: config.updateChannel ?? '',
+    useOpenAICompatible: isOpenAI,
+    openAIBaseURL: config.openAIBaseURL ?? 'https://integrate.api.nvidia.com/v1',
+    openAIModel: config.openAIModel ?? 'mistralai/mistral-7b-instruct',
+    openAIAPIKey: config.openAIAPIKey ?? '',
+    server_url: config.server_url ?? '',
+    model: config.model ?? 'SmolLM2-360M',
+    api_key: config.api_key,
+    disableStreaming: config.disableStreaming ?? false,
+    default_style: config.default_style ?? '',
+    auto_start: config.auto_start ?? false,
+    hotkey: config.hotkey ?? '',
+    monitor_clipboard: config.monitor_clipboard ?? false,
+    first_run: config.first_run ?? false,
+    auto_paste_mode: config.auto_paste_mode ?? '',
+    popup_position_mode: config.popup_position_mode ?? '',
+    mini_mode: config.mini_mode ?? false,
+    auto_minimize_on_copy: config.auto_minimize_on_copy ?? false,
+    ghost_hotkey: config.ghost_hotkey ?? '',
+    ghost_style: config.ghost_style ?? '',
+    ghost_text_type: config.ghost_text_type ?? '',
+  };
 };
 
 export interface TextTypeInfo {
@@ -137,6 +159,19 @@ function App() {
     try {
       const config = await SettingsAPI.GetSettings()
       setSettings(config)
+
+      // On launch, if running embedded mode and missing files, show setup screen
+      try {
+        const setup = await SettingsAPI.CheckSetupStatus()
+        const mode = config?.provider_mode || (config?.useOpenAICompatible ? 'openai' : 'embedded')
+        if (mode === 'embedded' && (!setup.engine_installed || !setup.model_installed)) {
+          setCurrentView('welcome')
+          return
+        }
+      } catch (e) {
+        console.error('Failed to check setup status:', e)
+      }
+
       if (config.first_run) {
         setCurrentView('welcome')
       }
